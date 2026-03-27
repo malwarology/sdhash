@@ -4,6 +4,8 @@ A Go library implementing the [sdhash](https://github.com/sdhash/sdhash) similar
 
 This library is a focused implementation of the core digest algorithm. It has no CLI, no index, and no filesystem dependencies. It takes bytes in and returns digest strings out.
 
+This work is based on the original Go implementation by [Emiliano Ciavatta](https://github.com/eciavatta/sdhash).
+
 ## Correctness
 
 This implementation has been verified correct against the C++ reference implementation using a 103,000-file corpus. All 103,000 files match in both stream mode and DD mode.
@@ -11,7 +13,7 @@ This implementation has been verified correct against the C++ reference implemen
 ## Installation
 
 ```bash
-go get github.com/your-org/sdhash
+go get github.com/malwarology/sdhash
 ```
 
 ## Usage
