@@ -83,7 +83,9 @@ func checkTrue(t *testing.T, condition bool, msg string) {
 }
 
 // checkGreater records a failure if got <= threshold.
-func checkGreater[T interface{ ~int | ~uint32 | ~uint64 | ~float64 }](t *testing.T, got, threshold T, msg string) {
+func checkGreater[T interface {
+	~int | ~uint32 | ~uint64 | ~float64
+}](t *testing.T, got, threshold T, msg string) {
 	t.Helper()
 	if got <= threshold {
 		t.Errorf("%s: got %v, want > %v", msg, got, threshold)
@@ -91,7 +93,9 @@ func checkGreater[T interface{ ~int | ~uint32 | ~uint64 | ~float64 }](t *testing
 }
 
 // checkAtLeast records a failure if got < min.
-func checkAtLeast[T interface{ ~int | ~uint32 | ~uint64 | ~float64 }](t *testing.T, got, min T, msg string) {
+func checkAtLeast[T interface {
+	~int | ~uint32 | ~uint64 | ~float64
+}](t *testing.T, got, min T, msg string) {
 	t.Helper()
 	if got < min {
 		t.Errorf("%s: got %v, want >= %v", msg, got, min)
@@ -99,7 +103,9 @@ func checkAtLeast[T interface{ ~int | ~uint32 | ~uint64 | ~float64 }](t *testing
 }
 
 // checkAtMost records a failure if got > max.
-func checkAtMost[T interface{ ~int | ~uint32 | ~uint64 | ~float64 }](t *testing.T, got, max T, msg string) {
+func checkAtMost[T interface {
+	~int | ~uint32 | ~uint64 | ~float64
+}](t *testing.T, got, max T, msg string) {
 	t.Helper()
 	if got > max {
 		t.Errorf("%s: got %v, want <= %v", msg, got, max)
