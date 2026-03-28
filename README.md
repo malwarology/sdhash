@@ -118,6 +118,7 @@ type Sdbf interface {
     Size() uint64                        // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
     FilterCount() uint32                 // number of bloom filters
+    FeatureDensity() float64             // total features / input size
 }
 
 // MinFileSize is the minimum input size required to compute a digest.
@@ -169,9 +170,80 @@ If you are building a UI with a slider, powers of two in the range 4096 to 10485
 
 Note that stream mode and DD mode answer different questions and are best used together. Stream mode tells you whether two files are broadly similar. DD mode tells you where they are similar. A pair that scores low in stream mode but has specific blocks scoring high in DD mode is a strong signal of code reuse in a specific region.
 
+## Known limitations and degenerate digests
+
+sdhash extracts features by computing entropy over a sliding window and hashing high-scoring positions. When the input is repetitive or low-entropy — zero-padded PE files, sparse disk images, configuration files with repeated keys — almost everything is rejected by the entropy filter or deduplicated, and very few elements are inserted into the bloom filters. This produces a degenerate digest that does not contain enough information for a meaningful similarity comparison.
+
+There are two observable failure modes, both confirmed by the original author of the C++ reference implementation ([sdhash/sdhash#5](https://github.com/sdhash/sdhash/issues/5#issuecomment-188952100)):
+
+**False positive.** Two files that share no meaningful content produce a high similarity score. This happens when both digests are nearly empty — two sparse bloom filters match on their shared zeroes, and the scoring math produces a misleadingly high result. The upstream report with example malware samples is at [sdhash/sdhash#17](https://github.com/sdhash/sdhash/issues/17).
+
+**False negative.** A file compared against an exact copy of itself produces a score of 0. This happens when the single bloom filter produced by the digest falls below the internal sparse-filter threshold (16 elements) and is excluded from scoring entirely.
+
+Both are the same underlying problem observed from opposite directions: the digest does not contain enough features to support a valid comparison.
+
+### Detecting degenerate digests with FeatureDensity
+
+`FeatureDensity()` returns the ratio of total unique features inserted across all bloom filters to the original input size. It is the direct measure of how much information the digest captured. A normal high-entropy binary produces consistent density; a zero-padded or repetitive file produces density close to zero.
+
+```go
+digest, _ := factory.Compute()
+
+density := digest.FeatureDensity()
+if density < threshold {
+    log.Printf("warning: feature density %.4f is below threshold; digest may be unreliable", density)
+}
+```
+
+The library exposes the metric but does not enforce a threshold. The correct threshold depends on the corpus. Rough guidance for PE malware analysis:
+
+| Density | Interpretation |
+|---|---|
+| > 0.02 | Normal. The digest has enough features for reliable comparison. |
+| 0.005 – 0.02 | Marginal. The digest may be usable but scores should be treated with lower confidence. |
+| < 0.005 | Degenerate. The digest almost certainly does not contain enough information. Scores from this digest — including self-comparison — are unreliable. |
+
+These ranges were derived from PE files. Other input types (documents, disk images, shellcode) may have different natural density distributions. The recommended approach is to compute `FeatureDensity()` across a representative sample of your corpus, plot the distribution, and set the threshold at the natural gap between legitimate low-density files and degenerate ones.
+
+Note that feature density is a function of distinct features, not file size alone. Repeating a file ten times adds almost no new features because the repeated content produces identical hashes that are rejected by the deduplication filter. Reversing the content and appending it adds features because the reversed bytes are entropically distinct. Size is a proxy for density but not a reliable one.
+
+### When to use a cryptographic hash instead
+
+sdhash answers the question "how similar are these two inputs?" It does not answer the question "are these two inputs identical?" The original author acknowledged this directly:
+
+> sdhash works with the similarity digest of the data, which does not contain something like a crypto hash to establish identity.
+
+If your workflow needs to establish identity — confirming that two files are exactly the same, detecting exact duplicates, or verifying that a file has not been modified — use a cryptographic hash (SHA-256, BLAKE2b, etc.) rather than sdhash. A crypto hash is both faster and correct for this purpose.
+
+The recommended pattern when both identity and similarity are needed:
+
+```go
+// First: exact match via crypto hash (fast, always correct).
+h1 := sha256.Sum256(data1)
+h2 := sha256.Sum256(data2)
+if h1 == h2 {
+    fmt.Println("identical")
+    return
+}
+
+// Second: similarity via sdhash (only if not identical).
+d1, _ := factory1.Compute()
+d2, _ := factory2.Compute()
+
+// Third: check feature density before trusting the score.
+if d1.FeatureDensity() < 0.005 || d2.FeatureDensity() < 0.005 {
+    fmt.Println("one or both digests are degenerate; similarity score is unreliable")
+    return
+}
+
+fmt.Printf("similarity: %d/100\n", d1.Compare(d2))
+```
+
+This three-step pattern — crypto hash for identity, sdhash for similarity, density check for validity — covers the full range of inputs reliably, including the low-entropy and small-file cases where sdhash alone can produce misleading results.
+
 ## Concurrency
 
-Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `CompareSample`, `String`, `Size`, `InputSize`, and `FilterCount` are read-only and may be called concurrently without restriction.
+Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `CompareSample`, `String`, `Size`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
 
 Each `CreateSdbfFromBytes` call followed by `Compute` produces an independent `Sdbf` instance with no shared state. Computing many digests concurrently across different inputs is safe and is the primary pattern the library is designed for.
 

@@ -36,6 +36,14 @@ type Sdbf interface {
 
 	// String returns the digest encoded as a string in the sdbf wire format.
 	String() string
+
+	// FeatureDensity returns the ratio of total unique features inserted across
+	// all bloom filters to the original input size. A low value indicates the
+	// digest is degenerate — the input was too repetitive, low-entropy, or small
+	// to produce enough features for a meaningful similarity comparison. Callers
+	// should check this value and treat digests below a corpus-appropriate
+	// threshold as unreliable.
+	FeatureDensity() float64
 }
 
 type sdbf struct {
@@ -251,6 +259,27 @@ func (sd *sdbf) FilterCount() uint32 {
 	sd.mu.RLock()
 	defer sd.mu.RUnlock()
 	return sd.bfCount
+}
+
+func (sd *sdbf) FeatureDensity() float64 {
+	sd.mu.RLock()
+	defer sd.mu.RUnlock()
+	if sd.origFileSize == 0 {
+		return 0
+	}
+	var totalElements uint64
+	if sd.elemCounts == nil {
+		// Stream mode: all filters except the last hold maxElem elements.
+		if sd.bfCount > 0 {
+			totalElements = uint64(sd.bfCount-1)*uint64(sd.maxElem) + uint64(sd.lastCount)
+		}
+	} else {
+		// DD (block) mode: each filter tracks its own count.
+		for i := uint32(0); i < sd.bfCount; i++ {
+			totalElements += uint64(sd.elemCounts[i])
+		}
+	}
+	return float64(totalElements) / float64(sd.origFileSize)
 }
 
 func (sd *sdbf) Compare(other Sdbf) int {

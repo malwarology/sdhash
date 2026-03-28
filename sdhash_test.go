@@ -986,3 +986,71 @@ func TestGenerateChunkSdbf_MultiChunk_SparseLastFilter(t *testing.T) {
 	checkEqual(t, 100, sdbfScore(sd, sd, 0),
 		"pruned multi-chunk digest must self-compare at 100")
 }
+
+// ---------------------------------------------------------------------------
+// 25. FeatureDensity — degenerate digest detection
+// ---------------------------------------------------------------------------
+
+// TestFeatureDensity_ZeroFilled verifies that a zero-filled buffer produces a
+// feature density far below any reasonable threshold, confirming the metric
+// correctly flags degenerate stream mode digests.
+func TestFeatureDensity_ZeroFilled(t *testing.T) {
+	t.Parallel()
+	buf := make([]byte, 1<<20) // 1 MiB of zeros
+	sd := streamDigest(t, buf)
+	density := sd.FeatureDensity()
+	// A zero-filled buffer should produce almost no features. Any reasonable
+	// threshold (e.g. 0.01) should be well above this value.
+	checkAtMost(t, density, 0.001,
+		"zero-filled buffer must have near-zero feature density")
+}
+
+// TestFeatureDensity_HighEntropy verifies that a high-entropy random buffer
+// produces a healthy feature density well above any degenerate threshold.
+func TestFeatureDensity_HighEntropy(t *testing.T) {
+	t.Parallel()
+	buf := randomBuf(1<<20, 7, 7) // 1 MiB of random data
+	sd := streamDigest(t, buf)
+	density := sd.FeatureDensity()
+	checkGreater(t, density, 0.01,
+		"high-entropy buffer must have feature density well above degenerate range")
+}
+
+// TestFeatureDensity_DDMode verifies that FeatureDensity works correctly in
+// block-aligned mode by summing per-filter element counts.
+func TestFeatureDensity_DDMode(t *testing.T) {
+	t.Parallel()
+	buf := randomBuf(1<<20, 7, 7) // 1 MiB of random data
+	sd := ddDigest(t, buf, 65536)
+	density := sd.FeatureDensity()
+	checkGreater(t, density, 0.0,
+		"DD-mode digest of random data must have positive feature density")
+}
+
+// TestFeatureDensity_ParsedDigest verifies that FeatureDensity is correct on
+// a digest reconstructed from its wire format string.
+func TestFeatureDensity_ParsedDigest(t *testing.T) {
+	t.Parallel()
+	buf := randomBuf(1<<20, 3, 3)
+	original := streamDigest(t, buf)
+	parsed, err := ParseSdbfFromString(original.String())
+	mustNoError(t, err)
+	checkEqual(t, original.FeatureDensity(), parsed.FeatureDensity(),
+		"FeatureDensity must survive a round-trip through String/Parse")
+}
+
+// TestFeatureDensity_ZeroOrigFileSize verifies that FeatureDensity returns 0
+// when origFileSize is 0, exercising the early-return guard against division
+// by zero. A stream digest string with origFileSize=0 is syntactically valid
+// to parse even though no real input could produce it.
+func TestFeatureDensity_ZeroOrigFileSize(t *testing.T) {
+	t.Parallel()
+
+	b64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
+	zeroSizeStream := "sdbf:03:1:-:0:sha1:256:5:7ff:160:1:42:" + b64 + "\n"
+
+	sd, err := ParseSdbfFromString(zeroSizeStream)
+	mustNoError(t, err, "parsing a stream digest with origFileSize=0 must succeed")
+	checkEqual(t, float64(0), sd.FeatureDensity(),
+		"FeatureDensity must return 0 when origFileSize is 0")
+}
