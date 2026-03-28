@@ -199,11 +199,11 @@ The library exposes the metric but does not enforce a threshold. The correct thr
 
 | Density | Interpretation |
 |---|---|
-| > 0.02 | Normal. The digest has enough features for reliable comparison. |
-| 0.005 – 0.02 | Marginal. The digest may be usable but scores should be treated with lower confidence. |
-| < 0.005 | Degenerate. The digest almost certainly does not contain enough information. Scores from this digest — including self-comparison — are unreliable. |
+| > 0.10 | Normal. The digest has enough features for reliable comparison. |
+| 0.02 – 0.10 | Marginal. The digest may be usable but scores should be treated with lower confidence. |
+| < 0.02 | Degenerate. The digest almost certainly does not contain enough information. Scores from this digest — including self-comparison — are unreliable. |
 
-These ranges were derived from PE files. Other input types (documents, disk images, shellcode) may have different natural density distributions. The recommended approach is to compute `FeatureDensity()` across a representative sample of your corpus, plot the distribution, and set the threshold at the natural gap between legitimate low-density files and degenerate ones.
+These ranges were calibrated against the false-positive pair reported in [sdhash/sdhash#17](https://github.com/sdhash/sdhash/issues/17), where two unrelated zero-padded PE files produced stream densities of 0.008 and 0.012 and a similarity score of 100. Both fall below 0.02. Other input types (documents, disk images, shellcode) may have different natural density distributions. The recommended approach is to compute `FeatureDensity()` across a representative sample of your corpus, plot the distribution, and set the threshold at the natural gap between legitimate low-density files and degenerate ones.
 
 Note that feature density is a function of distinct features, not file size alone. Repeating a file ten times adds almost no new features because the repeated content produces identical hashes that are rejected by the deduplication filter. Reversing the content and appending it adds features because the reversed bytes are entropically distinct. Size is a proxy for density but not a reliable one.
 
@@ -231,7 +231,7 @@ d1, _ := factory1.Compute()
 d2, _ := factory2.Compute()
 
 // Third: check feature density before trusting the score.
-if d1.FeatureDensity() < 0.005 || d2.FeatureDensity() < 0.005 {
+if d1.FeatureDensity() < 0.02 || d2.FeatureDensity() < 0.02 {
     fmt.Println("one or both digests are degenerate; similarity score is unreliable")
     return
 }

@@ -991,29 +991,26 @@ func TestGenerateChunkSdbf_MultiChunk_SparseLastFilter(t *testing.T) {
 // 25. FeatureDensity — degenerate digest detection
 // ---------------------------------------------------------------------------
 
-// TestFeatureDensity_ZeroFilled verifies that a zero-filled buffer produces a
-// feature density far below any reasonable threshold, confirming the metric
-// correctly flags degenerate stream mode digests.
+// TestFeatureDensity_ZeroFilled verifies that a zero-filled buffer produces
+// near-zero feature density.
 func TestFeatureDensity_ZeroFilled(t *testing.T) {
 	t.Parallel()
 	buf := make([]byte, 1<<20) // 1 MiB of zeros
 	sd := streamDigest(t, buf)
 	density := sd.FeatureDensity()
-	// A zero-filled buffer should produce almost no features. Any reasonable
-	// threshold (e.g. 0.01) should be well above this value.
 	checkAtMost(t, density, 0.001,
 		"zero-filled buffer must have near-zero feature density")
 }
 
 // TestFeatureDensity_HighEntropy verifies that a high-entropy random buffer
-// produces a healthy feature density well above any degenerate threshold.
+// produces feature density greater than 0.01.
 func TestFeatureDensity_HighEntropy(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 7, 7) // 1 MiB of random data
 	sd := streamDigest(t, buf)
 	density := sd.FeatureDensity()
 	checkGreater(t, density, 0.01,
-		"high-entropy buffer must have feature density well above degenerate range")
+		"high-entropy buffer must have feature density greater than 0.01")
 }
 
 // TestFeatureDensity_DDMode verifies that FeatureDensity works correctly in
