@@ -36,11 +36,6 @@ type Sdbf interface {
 
 	// String returns the digest encoded as a string in the sdbf wire format.
 	String() string
-
-	// Fast folds each bloom filter in the buffer to reduce its size, enabling faster
-	// (but slightly less precise) comparisons. This modifies the digest in place.
-	// It is safe to call concurrently with any other method.
-	Fast()
 }
 
 type sdbf struct {
@@ -55,7 +50,6 @@ type sdbf struct {
 	elemCounts   []uint16       // per-filter element counts (block mode only)
 	ddBlockSize  uint32         // block size in block mode
 	origFileSize uint64         // size of the original input data
-	fastMode     bool           // whether Fast() has been applied
 
 	// Configuration snapshotted from package-level defaults at construction time.
 	// Using struct fields instead of globals during computation eliminates data races
@@ -116,11 +110,9 @@ func ParseSdbfFromString(digest string) (Sdbf, error) {
 		return nil, fmt.Errorf("failed to read name: %w", err)
 	}
 
-	origFileSize, err := readUint64Field(r)
-	if err != nil {
+	if sd.origFileSize, err = readUint64Field(r); err != nil {
 		return nil, fmt.Errorf("failed to read original file size: %w", err)
 	}
-	sd.origFileSize = origFileSize
 
 	if err = skipField(r); err != nil { // hash algorithm (always "sha1")
 		return nil, fmt.Errorf("failed to read hash algorithm: %w", err)
@@ -214,13 +206,12 @@ func createSdbf(buffer []uint8, ddBlockSize uint32) (*sdbf, error) {
 	sd := &sdbf{
 		bfSize:         BfSize,
 		bfCount:        1,
-		bigFilters:     make([]*bloomFilter, 0, 1),
+		bigFilters:     []*bloomFilter{mustNewBloomFilter(bigFilter, defaultHashCount, bigFilterElem)},
 		popWinSize:     PopWinSize,
 		threshold:      Threshold,
 		blockSize:      BlockSize,
 		entropyWinSize: EntropyWinSize,
 	}
-	sd.bigFilters = append(sd.bigFilters, mustNewBloomFilter(bigFilter, defaultHashCount, bigFilterElem))
 
 	fileSize := uint64(len(buffer))
 	sd.origFileSize = fileSize
@@ -280,10 +271,16 @@ func (sd *sdbf) String() string {
 	defer sd.mu.RUnlock()
 
 	var sb strings.Builder
-	if sd.elemCounts == nil {
+	isStream := sd.elemCounts == nil
+	if isStream {
 		sb.WriteString(fmt.Sprintf("%s:%02d:", magicStream, sdbfVersion))
-		sb.WriteString(fmt.Sprintf("1:-:%d:sha1:", sd.origFileSize))
-		sb.WriteString(fmt.Sprintf("%d:%d:%x:", sd.bfSize, defaultHashCount, defaultMask))
+	} else {
+		sb.WriteString(fmt.Sprintf("%s:%02d:", magicDD, sdbfVersion))
+	}
+	sb.WriteString(fmt.Sprintf("1:-:%d:sha1:", sd.origFileSize))
+	sb.WriteString(fmt.Sprintf("%d:%d:%x:", sd.bfSize, defaultHashCount, defaultMask))
+
+	if isStream {
 		sb.WriteString(fmt.Sprintf("%d:%d:%d:", sd.maxElem, sd.bfCount, sd.lastCount))
 		qt, rem := sd.bfCount/6, sd.bfCount%6
 		b64Block := uint64(6 * sd.bfSize)
@@ -296,9 +293,6 @@ func (sd *sdbf) String() string {
 			sb.WriteString(base64.StdEncoding.EncodeToString(sd.buffer[pos : pos+uint64(rem*sd.bfSize)]))
 		}
 	} else {
-		sb.WriteString(fmt.Sprintf("%s:%02d:", magicDD, sdbfVersion))
-		sb.WriteString(fmt.Sprintf("1:-:%d:sha1:", sd.origFileSize))
-		sb.WriteString(fmt.Sprintf("%d:%d:%x:", sd.bfSize, defaultHashCount, defaultMask))
 		sb.WriteString(fmt.Sprintf("%d:%d:%d", sd.maxElem, sd.bfCount, sd.ddBlockSize))
 		for i := uint32(0); i < sd.bfCount; i++ {
 			sb.WriteString(fmt.Sprintf(":%02x:", sd.elemCounts[i]))
@@ -308,26 +302,6 @@ func (sd *sdbf) String() string {
 	sb.WriteByte('\n')
 
 	return sb.String()
-}
-
-// Fast folds each bloom filter to reduce its size, enabling faster but slightly
-// less precise comparisons. This modifies the digest in place and acquires a
-// write lock, so it is safe to call concurrently with any other method.
-func (sd *sdbf) Fast() {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-
-	for i := uint32(0); i < sd.bfCount; i++ {
-		tmp := newBloomFilterFromExistingData(
-			sd.buffer[i*sd.bfSize:(i+1)*sd.bfSize],
-			int(sd.elemCount(i)),
-		)
-		tmp.fold(2)
-		tmp.computeHamming()
-		sd.hamming[i] = uint16(tmp.hamming)
-		copy(sd.buffer[i*sd.bfSize:(i+1)*sd.bfSize], tmp.buffer)
-	}
-	sd.fastMode = true
 }
 
 // elemCount returns the element count for the filter at index.

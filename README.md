@@ -118,7 +118,6 @@ type Sdbf interface {
     Size() uint64                        // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
     FilterCount() uint32                 // number of bloom filters
-    Fast()                               // fold filters for faster comparison
 }
 
 // MinFileSize is the minimum input size required to compute a digest.
@@ -152,8 +151,6 @@ The name field is hardcoded to `-` with a length of `1`. This library treats dig
 Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `CompareSample`, `String`, `Size`, `InputSize`, and `FilterCount` are read-only and may be called concurrently without restriction.
 
 Each `CreateSdbfFromBytes` call followed by `Compute` produces an independent `Sdbf` instance with no shared state. Computing many digests concurrently across different inputs is safe and is the primary pattern the library is designed for.
-
-**Calling `Fast()` while comparisons are running on the same instance** will cause concurrent `Compare` calls to block until `Fast()` completes. The intended pattern is to call `Fast()` once after construction and before any comparisons, not interleaved with ongoing work.
 
 **`SdbfFactory` is immutable.** `WithBlockSize` returns a new factory rather than modifying the receiver. Sharing a factory across goroutines is safe, though pointless since each `Compute` call produces an independent result.
 

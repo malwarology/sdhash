@@ -27,7 +27,7 @@ func (sd *sdbf) generateChunkRanks(fileBuffer []uint8, chunkRanks []uint16) {
 	ascii := make([]uint8, 256)
 
 	limit := len(fileBuffer) - sd.entropyWinSize
-	for offset := 0; limit > 0 && offset < limit; offset++ {
+	for offset := 0; offset < limit; offset++ {
 		if offset%sd.blockSize == 0 { // full entropy recalculation at block boundaries
 			entropy = entropy64InitInt(fileBuffer[offset:], ascii)
 		} else { // incremental rolling update
@@ -87,7 +87,8 @@ func (sd *sdbf) generateChunkHash(fileBuffer []uint8, chunkPos uint64, chunkScor
 	bfCount := sd.bfCount
 	lastCount := sd.lastCount
 	currBf := sd.buffer[(bfCount-1)*sd.bfSize:]
-	var bigFiltersCount uint64
+	currentBigFilter := sd.bigFilters[len(sd.bigFilters)-1]
+	var bigFilterElemCount uint64
 
 	if chunkSize > uint64(sd.popWinSize) {
 		for i := uint64(0); i < chunkSize-uint64(sd.popWinSize); i++ {
@@ -100,20 +101,21 @@ func (sd *sdbf) generateChunkHash(fileBuffer []uint8, chunkPos uint64, chunkScor
 				}
 
 				// Skip if already seen in the large-scale deduplication filter.
-				if !sd.bigFilters[len(sd.bigFilters)-1].insertSha1(sha1Hash[:]) {
+				if !currentBigFilter.insertSha1(sha1Hash[:]) {
 					continue
 				}
 
 				lastCount++
-				bigFiltersCount++
+				bigFilterElemCount++
 				if lastCount == sd.maxElem {
 					currBf = currBf[sd.bfSize:]
 					bfCount++
 					lastCount = 0
 				}
-				if bigFiltersCount == sd.bigFilters[len(sd.bigFilters)-1].maxElem {
-					sd.bigFilters = append(sd.bigFilters, mustNewBloomFilter(bigFilter, defaultHashCount, bigFilterElem))
-					bigFiltersCount = 0
+				if bigFilterElemCount == currentBigFilter.maxElem {
+					currentBigFilter = mustNewBloomFilter(bigFilter, defaultHashCount, bigFilterElem)
+					sd.bigFilters = append(sd.bigFilters, currentBigFilter)
+					bigFilterElemCount = 0
 				}
 			}
 		}
@@ -126,12 +128,10 @@ func (sd *sdbf) generateChunkHash(fileBuffer []uint8, chunkPos uint64, chunkScor
 // generateBlockHash hashes high-scoring positions in fileBuffer and inserts them into the sdbf (block mode).
 func (sd *sdbf) generateBlockHash(fileBuffer []uint8, blockNum uint64, chunkScores []uint16, rem uint32,
 	threshold uint32, allowed int32) {
-	var hashCnt, maxOffset uint32
-
+	var hashCnt uint32
+	maxOffset := sd.ddBlockSize
 	if rem > 0 {
 		maxOffset = rem
-	} else {
-		maxOffset = sd.ddBlockSize
 	}
 	for i := uint32(0); i < maxOffset-sd.popWinSize && hashCnt < sd.maxElem; i++ {
 		if uint32(chunkScores[i]) > threshold || (uint32(chunkScores[i]) == threshold && allowed > 0) {
@@ -193,8 +193,7 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []uint8, chunkSize uint64) {
 			sd.generateChunkRanks(fileBuffer[:chunkSize], chunkRanks)
 			sd.generateChunkScores(chunkRanks, chunkSize, chunkScores, nil)
 			sd.generateChunkHash(fileBuffer, 0, chunkScores, chunkSize)
-		}
-		if rem > 0 {
+		} else if rem > 0 {
 			sd.generateChunkRanks(fileBuffer[qt*chunkSize:], chunkRanks)
 			sd.generateChunkScores(chunkRanks, rem, chunkScores, nil)
 			sd.generateChunkHash(fileBuffer, qt*chunkSize, chunkScores, rem)
@@ -330,13 +329,14 @@ func (sd *sdbf) generateBlockSdbf(fileBuffer []uint8) {
 // Both digests must have their hamming weights pre-computed (guaranteed after construction).
 // The caller must hold at least read locks on both sdbf1 and sdbf2.
 func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf, sample uint32) int {
-	var bfCount1 uint32
-	if sample > 0 && sdbf1.bfCount > sample {
+	bfCount1 := sdbf1.bfCount
+	if sample > 0 && bfCount1 > sample {
 		bfCount1 = sample
-	} else {
-		bfCount1 = sdbf1.bfCount
 	}
 
+	// Always iterate over the smaller digest. This minimizes the number of
+	// sdbfMaxScore calls while still finding the best match for every filter
+	// in the smaller digest against the full larger digest.
 	if bfCount1 > sdbf2.bfCount {
 		sdbf1, sdbf2 = sdbf2, sdbf1
 		bfCount1 = sdbf1.bfCount
@@ -370,7 +370,9 @@ func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf, sample uint32) int {
 	return int(math.Round(100.0 * scoreSum / float64(denominator)))
 }
 
-// sdbfMaxScore calculates the maximum match (0.0–1.0) of a single reference filter against all target filters.
+// sdbfMaxScore calculates the maximum match of a single reference filter against all target filters.
+// Returns 0 if the reference filter has too few elements for a valid comparison, -1 if no target
+// filter had enough elements to score against, or a value in [0.0, 1.0] otherwise.
 // The caller must hold at least read locks on both refSdbf and targetSdbf.
 func sdbfMaxScore(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64 {
 	var maxScore float64 = -1
@@ -390,12 +392,7 @@ func sdbfMaxScore(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64 {
 		}
 		e2Cnt := targetSdbf.hamming[i]
 		maxEst := min(e1Cnt, e2Cnt)
-		var cutOff uint32
-		if !refSdbf.fastMode {
-			cutOff = cutoffs256[4096/(s1+s2)]
-		} else {
-			cutOff = cutoffs64[1024/(s1+s2)]
-		}
+		cutOff := cutoffs256[4096/(s1+s2)]
 		var score float64
 		match := andPopcount(bf1, bf2)
 		if match > cutOff {

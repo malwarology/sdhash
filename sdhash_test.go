@@ -330,29 +330,6 @@ func TestSimilarData_ScoresHigh(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Fast() does not panic and self-comparison still works
-// ---------------------------------------------------------------------------
-
-func TestFast_SelfComparisonStillWorks(t *testing.T) {
-	t.Parallel()
-	buf := randomBuf(1<<20, 1, 1)
-	sd := streamDigest(t, buf)
-
-	// Verify self-comparison is 100 before folding.
-	checkEqual(t, 100, sd.Compare(sd), "self-comparison must be 100 before Fast()")
-
-	checkNotPanics(t, func() { sd.Fast() }, "Fast() must not panic")
-
-	// After Fast() each bloom filter is folded, which halves its effective size and
-	// may push per-filter element counts below minElemCount. Those filters are
-	// skipped by sdbfMaxScore, so the score can legitimately drop below 100.
-	// What must hold is: no panic, and the score is still in the valid range.
-	score := sd.Compare(sd)
-	checkAtLeast(t, score, 0, "score after Fast() must be >= 0")
-	checkAtMost(t, score, 100, "score after Fast() must be <= 100")
-}
-
-// ---------------------------------------------------------------------------
 // 9. Concurrent safety
 // ---------------------------------------------------------------------------
 
@@ -824,28 +801,6 @@ func TestNewBloomFilter_InvalidSize(t *testing.T) {
 // ---------------------------------------------------------------------------
 // 19. bloomFilter.fold — bfSize == 32 early-exit branch
 // ---------------------------------------------------------------------------
-
-// TestBloomFilter_Fold_HitsSize32Break exercises the break inside fold that fires
-// when bfSize reaches 32. Starting from 128 bytes: after one iteration,
-// bfSize = 128 >> 2 = 32, which triggers the break before a second iteration runs.
-func TestBloomFilter_Fold_HitsSize32Break(t *testing.T) {
-	t.Parallel()
-
-	bf, err := newBloomFilter(128, defaultHashCount, 100)
-	mustNoError(t, err)
-
-	// Fill with non-trivial data so we can verify the fold actually ran.
-	for i := range bf.buffer {
-		bf.buffer[i] = byte(i + 1)
-	}
-
-	checkNotPanics(t, func() { bf.fold(2) }, "fold must not panic")
-
-	// After one fold iteration on a 128-byte filter, bfSize becomes 128>>2=32
-	// and the loop breaks, so the buffer is truncated to exactly 32 bytes.
-	checkLen(t, bf.buffer, 32,
-		"fold must stop at bfSize==32 and truncate the buffer to 32 bytes")
-}
 
 // ---------------------------------------------------------------------------
 // 20. entropy64IncInt — clamping branches
