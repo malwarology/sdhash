@@ -1051,3 +1051,54 @@ func TestFeatureDensity_ZeroOrigFileSize(t *testing.T) {
 	checkEqual(t, float64(0), sd.FeatureDensity(),
 		"FeatureDensity must return 0 when origFileSize is 0")
 }
+
+// ---------------------------------------------------------------------------
+// 26. Issue 2 regression — false positive from degenerate digests
+// ---------------------------------------------------------------------------
+
+// TestIssue2_DegenerateStreamDigests verifies that the two samples from
+// sdhash/sdhash#17 produce stream digests with feature density below 0.02.
+// Without a density check, these two unrelated files score 100 against each
+// other in stream mode.
+func TestIssue2_DegenerateStreamDigests(t *testing.T) {
+	t.Parallel()
+
+	dataA, err := os.ReadFile("testdata/issue2a.bin")
+	mustNoError(t, err)
+	dataB, err := os.ReadFile("testdata/issue2b.bin")
+	mustNoError(t, err)
+
+	sdA := streamDigest(t, dataA)
+	sdB := streamDigest(t, dataB)
+
+	// Both digests must have feature density below 0.02.
+	checkAtMost(t, sdA.FeatureDensity(), 0.02,
+		"issue2a stream density must be below 0.02")
+	checkAtMost(t, sdB.FeatureDensity(), 0.02,
+		"issue2b stream density must be below 0.02")
+
+	// The stream comparison produces a false positive of 100.
+	// This documents the known failure mode; FeatureDensity is how
+	// callers detect it.
+	score := sdA.Compare(sdB)
+	checkEqual(t, 100, score,
+		"issue2 stream comparison produces a false positive of 100")
+}
+
+// TestIssue2_DDModeNoFalsePositive verifies that DD mode does not produce
+// the same false positive for the issue 2 samples.
+func TestIssue2_DDModeNoFalsePositive(t *testing.T) {
+	t.Parallel()
+
+	dataA, err := os.ReadFile("testdata/issue2a.bin")
+	mustNoError(t, err)
+	dataB, err := os.ReadFile("testdata/issue2b.bin")
+	mustNoError(t, err)
+
+	ddA := ddDigest(t, dataA, 65536)
+	ddB := ddDigest(t, dataB, 65536)
+
+	score := ddA.Compare(ddB)
+	checkEqual(t, 0, score,
+		"issue2 DD comparison must be 0")
+}
