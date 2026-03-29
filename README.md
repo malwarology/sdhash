@@ -249,7 +249,7 @@ Each `CreateSdbfFromBytes` call followed by `Compute` produces an independent `S
 
 **`SdbfFactory` is immutable.** `WithBlockSize` returns a new factory rather than modifying the receiver. Sharing a factory across goroutines is safe, though pointless since each `Compute` call produces an independent result.
 
-**SHA1 is the computational bottleneck.** The inner loop computes SHA1 over a 64-byte sliding window at every candidate position in the input. This dominates CPU time. When processing many inputs concurrently the cores stay saturated on SHA1 work. Further within-input parallelism of the SHA1 loop was evaluated and showed no gain when a multi-worker pool is already running at the input level.
+**The inner scoring loop is the computational bottleneck.** `generateChunkScores` accounts for 50–62% of total CPU time, and instruction-level profiling confirms this is irreducible algorithmic work (rank comparisons and loop control), not overhead that can be optimized away. When processing many inputs concurrently the cores stay saturated on scoring work. Further within-input parallelism of the scoring loop was evaluated and showed no gain when a multi-worker pool is already running at the input level.
 
 ## Testing
 
