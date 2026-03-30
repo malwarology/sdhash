@@ -2,9 +2,7 @@ package sdhash
 
 import "fmt"
 
-// createSdbf creates and digests a sdbf from a byte buffer. Configuration is
-// snapshotted from the package-level defaults at this point; subsequent changes
-// to the defaults do not affect this digest.
+// createSdbf creates and digests a sdbf from a byte buffer.
 //
 // IMPORTANT: Do not add a default index bloom filter here. Adding one causes
 // hash mismatches with the reference implementation.

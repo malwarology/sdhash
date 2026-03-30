@@ -46,22 +46,20 @@ type sdbf struct {
 	mu           sync.RWMutex   // protects all fields below for concurrent access
 	hamming      []uint16       // hamming weight for each bloom filter; always set after construction
 	buffer       []byte         // concatenated bloom filter data
-	maxElem      uint32         // max elements per filter (snapshotted from MaxElem or MaxElemDd)
+	maxElem      uint32         // max elements per filter
 	bigFilters   []*bloomFilter // large deduplication filters used during stream-mode digesting
 	bfCount      uint32         // number of bloom filters
-	bfSize       uint32         // bloom filter size in bytes (snapshotted from BfSize)
+	bfSize       uint32         // bloom filter size in bytes
 	lastCount    uint32         // element count in the final filter (stream mode only)
 	elemCounts   []uint16       // per-filter element counts (block mode only)
 	ddBlockSize  uint32         // block size in block mode
 	origFileSize uint64         // size of the original input data
 
-	// Configuration snapshotted from package-level defaults at construction time.
-	// Using struct fields instead of globals during computation eliminates data races
-	// when defaults are updated between constructions.
-	popWinSize     uint32 // snapshotted from PopWinSize
-	threshold      uint32 // snapshotted from Threshold
-	blockSize      int    // snapshotted from BlockSize
-	entropyWinSize int    // snapshotted from EntropyWinSize
+	// Algorithm parameters initialized from package constants.
+	popWinSize     uint32
+	threshold      uint32
+	blockSize      int
+	entropyWinSize int
 }
 
 func (sd *sdbf) Size() uint64 {
