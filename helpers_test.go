@@ -1,9 +1,59 @@
 package sdhash
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/hex"
 	"math/rand/v2"
+	"os"
 	"testing"
 )
+
+// ---------------------------------------------------------------------------
+// Testdata helpers
+// ---------------------------------------------------------------------------
+
+const testdataKeyHex = "73646861736874657374646174616b6579313233343536373839306162636465"
+
+// decryptTestFile reads a .bin.enc file, decrypts it with AES-256-GCM using
+// the hardcoded testdata key, and returns the plaintext. The test is stopped
+// immediately via t.Fatalf on any error.
+func decryptTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+
+	ciphertext, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("decryptTestFile: failed to read %s: %v", path, err)
+	}
+
+	key, err := hex.DecodeString(testdataKeyHex)
+	if err != nil {
+		t.Fatalf("decryptTestFile: failed to decode key: %v", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatalf("decryptTestFile: failed to create cipher: %v", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatalf("decryptTestFile: failed to create GCM: %v", err)
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		t.Fatalf("decryptTestFile: %s is too short to contain a nonce", path)
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		t.Fatalf("decryptTestFile: failed to decrypt %s: %v", path, err)
+	}
+
+	return plaintext
+}
 
 // ---------------------------------------------------------------------------
 // Assertion helpers

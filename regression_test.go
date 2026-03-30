@@ -68,8 +68,7 @@ import (
 
 func TestIssue1DefaultIndexNotCreated(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("testdata/issue1.bin")
-	mustNoError(t, err)
+	data := decryptTestFile(t, "testdata/issue1.bin.enc")
 
 	factory, err := CreateSdbfFromBytes(data)
 	mustNoError(t, err)
@@ -95,8 +94,7 @@ func TestIssue1DefaultIndexNotCreated(t *testing.T) {
 func TestIssue1StreamHash_MatchesReference(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile("testdata/issue1.bin")
-	mustNoError(t, err)
+	data := decryptTestFile(t, "testdata/issue1.bin.enc")
 
 	expectedBytes, err := os.ReadFile("testdata/issue1.stream")
 	mustNoError(t, err)
@@ -120,8 +118,7 @@ func TestIssue1StreamHash_MatchesReference(t *testing.T) {
 func TestIssue1DDHash_MatchesReference(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile("testdata/issue1.bin")
-	mustNoError(t, err)
+	data := decryptTestFile(t, "testdata/issue1.bin.enc")
 
 	expectedBytes, err := os.ReadFile("testdata/issue1.dd")
 	mustNoError(t, err)
@@ -215,10 +212,8 @@ func TestIssue1_RoundTrip_DDReference(t *testing.T) {
 func TestIssue2_DegenerateStreamDigests(t *testing.T) {
 	t.Parallel()
 
-	dataA, err := os.ReadFile("testdata/issue2a.bin")
-	mustNoError(t, err)
-	dataB, err := os.ReadFile("testdata/issue2b.bin")
-	mustNoError(t, err)
+	dataA := decryptTestFile(t, "testdata/issue2a.bin.enc")
+	dataB := decryptTestFile(t, "testdata/issue2b.bin.enc")
 
 	sdA := streamDigest(t, dataA)
 	sdB := streamDigest(t, dataB)
@@ -245,10 +240,8 @@ func TestIssue2_DegenerateStreamDigests(t *testing.T) {
 func TestIssue2_DDModeNoFalsePositive(t *testing.T) {
 	t.Parallel()
 
-	dataA, err := os.ReadFile("testdata/issue2a.bin")
-	mustNoError(t, err)
-	dataB, err := os.ReadFile("testdata/issue2b.bin")
-	mustNoError(t, err)
+	dataA := decryptTestFile(t, "testdata/issue2a.bin.enc")
+	dataB := decryptTestFile(t, "testdata/issue2b.bin.enc")
 
 	ddA := ddDigest(t, dataA, 65536)
 	ddB := ddDigest(t, dataB, 65536)
