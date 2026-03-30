@@ -49,7 +49,7 @@ type Sdbf interface {
 type sdbf struct {
 	mu           sync.RWMutex   // protects all fields below for concurrent access
 	hamming      []uint16       // hamming weight for each bloom filter; always set after construction
-	buffer       []uint8        // concatenated bloom filter data
+	buffer       []byte         // concatenated bloom filter data
 	maxElem      uint32         // max elements per filter (snapshotted from MaxElem or MaxElemDd)
 	bigFilters   []*bloomFilter // large deduplication filters used during stream-mode digesting
 	bfCount      uint32         // number of bloom filters
@@ -292,7 +292,7 @@ func ParseSdbfFromString(digest string) (Sdbf, error) {
 			return nil, fmt.Errorf("failed to read block size: %w", err)
 		}
 		sd.elemCounts = make([]uint16, bfCount)
-		sd.buffer = make([]uint8, bfCount*bfSize)
+		sd.buffer = make([]byte, bfCount*bfSize)
 		for i := uint64(0); i < bfCount; i++ {
 			elemStr, err := readField(r)
 			if err != nil {

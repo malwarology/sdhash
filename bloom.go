@@ -6,10 +6,10 @@ import (
 )
 
 type bloomFilter struct {
-	buffer    []uint8 // bloom filter data
-	bitMask   uint64  // bit mask derived from filter size
-	maxElem   uint64  // maximum number of elements
-	hashCount uint16  // number of hash functions (k)
+	buffer    []byte // bloom filter data
+	bitMask   uint64 // bit mask derived from filter size
+	maxElem   uint64 // maximum number of elements
+	hashCount uint16 // number of hash functions (k)
 }
 
 func newBloomFilter(size uint64, hashCount uint16, maxElem uint64) (*bloomFilter, error) {
@@ -25,7 +25,7 @@ func newBloomFilter(size uint64, hashCount uint16, maxElem uint64) (*bloomFilter
 		return nil, errors.New("bloom filter size must be a power of 2 and at least 64 bytes")
 	}
 
-	bf.buffer = make([]uint8, size)
+	bf.buffer = make([]byte, size)
 
 	return bf, nil
 }
@@ -60,7 +60,7 @@ func (bf *bloomFilter) insertSha1(sha1 []uint32) bool {
 }
 
 // bfSha1Insert inserts a SHA1 hash into a raw bloom filter buffer and returns the number of newly set bits.
-func bfSha1Insert(bf []uint8, sha1Hash [5]uint32) uint32 {
+func bfSha1Insert(bf []byte, sha1Hash [5]uint32) uint32 {
 	var insertCnt uint32
 	for i := range sha1Hash {
 		insert := sha1Hash[i] & defaultMask
@@ -74,7 +74,7 @@ func bfSha1Insert(bf []uint8, sha1Hash [5]uint32) uint32 {
 }
 
 // andPopcount returns the number of bits set in the AND of two 256-byte bloom filters.
-func andPopcount(bf1, bf2 []uint8) uint32 {
+func andPopcount(bf1, bf2 []byte) uint32 {
 	var count uint32
 	for i := 0; i < 256; i++ {
 		count += uint32(bits.OnesCount8(bf1[i] & bf2[i]))

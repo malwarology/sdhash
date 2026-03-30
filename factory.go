@@ -8,7 +8,7 @@ import "fmt"
 //
 // IMPORTANT: Do not add a default index bloom filter here. Adding one causes
 // hash mismatches with the reference implementation.
-func createSdbf(buffer []uint8, ddBlockSize uint32) (*sdbf, error) {
+func createSdbf(buffer []byte, ddBlockSize uint32) (*sdbf, error) {
 	sd := &sdbf{
 		bfSize:         BfSize,
 		bfCount:        1,
@@ -32,7 +32,7 @@ func createSdbf(buffer []uint8, ddBlockSize uint32) (*sdbf, error) {
 		}
 		sd.bfCount = uint32(ddBlockCnt)
 		sd.ddBlockSize = ddBlockSize
-		sd.buffer = make([]uint8, ddBlockCnt*uint64(BfSize))
+		sd.buffer = make([]byte, ddBlockCnt*uint64(BfSize))
 		sd.elemCounts = make([]uint16, ddBlockCnt)
 		sd.generateBlockSdbf(buffer)
 	}
@@ -58,13 +58,13 @@ type SdbfFactory interface {
 }
 
 type sdbfFactory struct {
-	buffer      []uint8
+	buffer      []byte
 	ddBlockSize uint32
 }
 
 // CreateSdbfFromBytes returns a factory that will produce a Sdbf from the given byte slice.
 // The slice must be at least MinFileSize bytes.
-func CreateSdbfFromBytes(buffer []uint8) (SdbfFactory, error) {
+func CreateSdbfFromBytes(buffer []byte) (SdbfFactory, error) {
 	if len(buffer) < MinFileSize {
 		return nil, fmt.Errorf("buffer length must be at least %d bytes", MinFileSize)
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 // u32sha1 computes the SHA1 of data and returns it as five little-endian uint32 values.
-func u32sha1(data []uint8) [5]uint32 {
+func u32sha1(data []byte) [5]uint32 {
 	sum := sha1.Sum(data)
 
 	var buf [5]uint32
@@ -52,8 +52,8 @@ func putChunkSlice(s []uint16) {
 // pressure on high-throughput workloads.
 var asciiPool = sync.Pool{
 	New: func() any {
-		buf := new([]uint8)
-		*buf = make([]uint8, 256)
+		buf := new([]byte)
+		*buf = make([]byte, 256)
 		return buf
 	},
 }
@@ -66,9 +66,9 @@ var asciiPool = sync.Pool{
 // a computed limit, not by len(chunkRanks) directly. The access pattern is
 // already O(n) and the per-element cost is dominated by the entropy table
 // lookup and the incremental entropy update, not by bounds checks.
-func (sd *sdbf) generateChunkRanks(fileBuffer []uint8, chunkRanks []uint16) {
+func (sd *sdbf) generateChunkRanks(fileBuffer []byte, chunkRanks []uint16) {
 	var entropy uint64
-	asciiPtr := asciiPool.Get().(*[]uint8)
+	asciiPtr := asciiPool.Get().(*[]byte)
 	ascii := *asciiPtr
 	clear(ascii)
 	defer asciiPool.Put(asciiPtr)
@@ -169,7 +169,7 @@ func (sd *sdbf) generateChunkScores(chunkRanks []uint16, chunkSize uint64, chunk
 // Slice zeroing (memclr from pooled slice reuse) varies from 7% on fast
 // desktop cores to 25% on many-core servers. Optimizing SHA1 would have
 // negligible impact on overall throughput.
-func (sd *sdbf) generateChunkHash(fileBuffer []uint8, chunkPos uint64, chunkScores []uint16, chunkSize uint64) {
+func (sd *sdbf) generateChunkHash(fileBuffer []byte, chunkPos uint64, chunkScores []uint16, chunkSize uint64) {
 	bfCount := sd.bfCount
 	lastCount := sd.lastCount
 	currBf := sd.buffer[(bfCount-1)*sd.bfSize:]
@@ -212,7 +212,7 @@ func (sd *sdbf) generateChunkHash(fileBuffer []uint8, chunkPos uint64, chunkScor
 }
 
 // generateBlockHash hashes high-scoring positions in fileBuffer and inserts them into the sdbf (block mode).
-func (sd *sdbf) generateBlockHash(fileBuffer []uint8, blockNum uint64, chunkScores []uint16, rem uint32,
+func (sd *sdbf) generateBlockHash(fileBuffer []byte, blockNum uint64, chunkScores []uint16, rem uint32,
 	threshold uint32, allowed int32) {
 	var hashCnt uint32
 	maxOffset := sd.ddBlockSize
@@ -253,14 +253,14 @@ func (sd *sdbf) generateBlockHash(fileBuffer []uint8, blockNum uint64, chunkScor
 //
 // Files that fit in a single chunk skip the parallel machinery entirely and
 // follow the original sequential path.
-func (sd *sdbf) generateChunkSdbf(fileBuffer []uint8, chunkSize uint64) {
+func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) {
 	if chunkSize <= uint64(sd.popWinSize) {
 		panic(fmt.Sprintf("chunkSize %d must be greater than popWinSize %d", chunkSize, sd.popWinSize))
 	}
 
 	fileSize := uint64(len(fileBuffer))
 	buffSize := ((fileSize >> 11) + 1) << 8 // initial sdbf buffer estimate
-	sd.buffer = make([]uint8, buffSize)
+	sd.buffer = make([]byte, buffSize)
 
 	qt := fileSize / chunkSize
 	rem := fileSize % chunkSize
@@ -369,7 +369,7 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []uint8, chunkSize uint64) {
 }
 
 // generateSingleBlockSdbf is the goroutine worker for parallel block hash generation.
-func (sd *sdbf) generateSingleBlockSdbf(fileBuffer []uint8, blockNum uint64) {
+func (sd *sdbf) generateSingleBlockSdbf(fileBuffer []byte, blockNum uint64) {
 	blockSize := uint64(sd.ddBlockSize)
 	var sum, allowed uint32
 	var scoreHistogram [66]int32
@@ -392,7 +392,7 @@ func (sd *sdbf) generateSingleBlockSdbf(fileBuffer []uint8, blockNum uint64) {
 }
 
 // generateBlockSdbf computes the sdbf hash for a buffer in block-aligned (dd) mode.
-func (sd *sdbf) generateBlockSdbf(fileBuffer []uint8) {
+func (sd *sdbf) generateBlockSdbf(fileBuffer []byte) {
 	blockSize := uint64(sd.ddBlockSize)
 	qt := uint64(len(fileBuffer)) / blockSize
 	rem := uint64(len(fileBuffer)) % blockSize
