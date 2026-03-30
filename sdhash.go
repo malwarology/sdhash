@@ -30,10 +30,6 @@ type Sdbf interface {
 	// A score of 0 indicates very different data; 100 indicates identical data.
 	Compare(other Sdbf) int
 
-	// CompareSample returns a similarity score in [0, 100] using at most sample
-	// bloom filters from each digest. Use 0 to disable sampling.
-	CompareSample(other Sdbf, sample uint32) int
-
 	// String returns the digest encoded as a string in the sdbf wire format.
 	String() string
 
@@ -108,16 +104,12 @@ func (sd *sdbf) FeatureDensity() float64 {
 }
 
 func (sd *sdbf) Compare(other Sdbf) int {
-	return sd.CompareSample(other, 0)
-}
-
-func (sd *sdbf) CompareSample(other Sdbf, sample uint32) int {
 	o := other.(*sdbf)
 	sd.mu.RLock()
 	defer sd.mu.RUnlock()
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	return sdbfScore(sd, o, sample)
+	return sdbfScore(sd, o)
 }
 
 func (sd *sdbf) String() string {

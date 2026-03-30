@@ -44,12 +44,11 @@ import (
 // V. sdhash.go
 // ├── 00230000  ParseSdbfFromString error cases
 // ├── 00240000  ParseSdbfFromString stream without trailing newline
-// ├── 00250000  CompareSample non-zero sample
-// ├── 00260000  FeatureDensity zero-filled
-// ├── 00270000  FeatureDensity high entropy
-// ├── 00280000  FeatureDensity DD mode
-// ├── 00290000  FeatureDensity parsed digest
-// └── 00300000  FeatureDensity zero origFileSize
+// ├── 00250000  FeatureDensity zero-filled
+// ├── 00260000  FeatureDensity high entropy
+// ├── 00270000  FeatureDensity DD mode
+// ├── 00280000  FeatureDensity parsed digest
+// └── 00290000  FeatureDensity zero origFileSize
 
 // =========================================================================
 // I. General
@@ -460,7 +459,7 @@ func TestGenerateChunkSdbf_MultiChunk(t *testing.T) {
 		"buffer length must equal bfCount*bfSize after trim")
 	checkLen(t, sd.hamming, int(sd.bfCount),
 		"hamming slice length must equal bfCount")
-	checkEqual(t, 100, sdbfScore(sd, sd, 0), "multi-chunk digest must self-compare at 100")
+	checkEqual(t, 100, sdbfScore(sd, sd), "multi-chunk digest must self-compare at 100")
 }
 
 // ---------------------------------------------------------------------------
@@ -503,7 +502,7 @@ func TestGenerateChunkSdbf_ExactlyOneChunk(t *testing.T) {
 	checkGreater(t, sd.bfCount, uint32(0), "exactly-one-chunk digest must have at least one filter")
 	checkEqual(t, int(sd.bfCount)*int(sd.bfSize), len(sd.buffer),
 		"buffer length must equal bfCount*bfSize")
-	checkEqual(t, 100, sdbfScore(sd, sd, 0),
+	checkEqual(t, 100, sdbfScore(sd, sd),
 		"exactly-one-chunk digest must self-compare at 100")
 }
 
@@ -539,7 +538,7 @@ func TestGenerateChunkSdbf_MultiChunk_SparseLastFilter(t *testing.T) {
 		"lastCount must equal maxElem after pruning resets it")
 	checkEqual(t, int(sd.bfCount)*int(sd.bfSize), len(sd.buffer),
 		"buffer length must equal bfCount*bfSize after pruning and trim")
-	checkEqual(t, 100, sdbfScore(sd, sd, 0),
+	checkEqual(t, 100, sdbfScore(sd, sd),
 		"pruned multi-chunk digest must self-compare at 100")
 }
 
@@ -614,32 +613,7 @@ func TestParseSdbf_StreamWithoutTrailingNewline(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00250000  CompareSample non-zero sample
-// ---------------------------------------------------------------------------
-
-// TestCompareSample_NonZeroSample exercises the branch in sdbfScore where
-// sample > 0 and bfCount > sample, so only the first `sample` filters are used.
-func TestCompareSample_NonZeroSample(t *testing.T) {
-	t.Parallel()
-
-	buf := randomBuf(1<<20, 6, 6)
-	sd := streamDigest(t, buf)
-
-	if sd.FilterCount() < 2 {
-		t.Skip("need FilterCount >= 2 to exercise the sample code path")
-	}
-
-	sample := sd.FilterCount() / 2
-	score := sd.CompareSample(sd, sample)
-	checkAtLeast(t, score, 0, "sampled score must be >= 0")
-	checkAtMost(t, score, 100, "sampled score must be <= 100")
-
-	checkEqual(t, sd.Compare(sd), sd.CompareSample(sd, 0),
-		"CompareSample with sample=0 must equal Compare")
-}
-
-// ---------------------------------------------------------------------------
-// 00260000  FeatureDensity zero-filled
+// 00250000  FeatureDensity zero-filled
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroFilled verifies that a zero-filled buffer produces
@@ -654,7 +628,7 @@ func TestFeatureDensity_ZeroFilled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00270000  FeatureDensity high entropy
+// 00260000  FeatureDensity high entropy
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_HighEntropy verifies that a high-entropy random buffer
@@ -669,7 +643,7 @@ func TestFeatureDensity_HighEntropy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00280000  FeatureDensity DD mode
+// 00270000  FeatureDensity DD mode
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_DDMode verifies that FeatureDensity works correctly in
@@ -684,7 +658,7 @@ func TestFeatureDensity_DDMode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00290000  FeatureDensity parsed digest
+// 00280000  FeatureDensity parsed digest
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ParsedDigest verifies that FeatureDensity is correct on
@@ -700,7 +674,7 @@ func TestFeatureDensity_ParsedDigest(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00300000  FeatureDensity zero origFileSize
+// 00290000  FeatureDensity zero origFileSize
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroOrigFileSize verifies that FeatureDensity returns 0

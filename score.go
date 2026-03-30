@@ -5,11 +5,8 @@ import "math"
 // sdbfScore calculates the similarity score (0–100) between two sdbf digests.
 // Both digests must have their hamming weights pre-computed (guaranteed after construction).
 // The caller must hold at least read locks on both sdbf1 and sdbf2.
-func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf, sample uint32) int {
+func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount
-	if sample > 0 && bfCount1 > sample {
-		bfCount1 = sample
-	}
 
 	// Always iterate over the smaller digest. This minimizes the number of
 	// sdbfMaxScore calls while still finding the best match for every filter

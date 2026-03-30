@@ -113,7 +113,6 @@ func ParseSdbfFromString(string) (Sdbf, error)
 // Sdbf is a computed similarity digest.
 type Sdbf interface {
     Compare(Sdbf) int                    // similarity score in [0, 100]
-    CompareSample(Sdbf, uint32) int      // score using at most n filters
     String() string                      // wire-format encoding
     Size() uint64                        // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
@@ -243,7 +242,7 @@ This three-step pattern — crypto hash for identity, sdhash for similarity, den
 
 ## Concurrency
 
-Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `CompareSample`, `String`, `Size`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
+Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `String`, `Size`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
 
 Each `CreateSdbfFromBytes` call followed by `Compute` produces an independent `Sdbf` instance with no shared state. Computing many digests concurrently across different inputs is safe and is the primary pattern the library is designed for.
 
