@@ -1,24 +1,16 @@
 package sdhash
 
-// Configuration defaults for the sdbf algorithm. Each of these values is
-// snapshotted into the sdbf struct at construction time; the package-level
-// vars are never read during digest computation. It is therefore safe to
-// update these defaults between constructions without any synchronization,
-// and changing them has no effect on digests that are already in progress
-// or complete.
-var (
-	PopWinSize     uint32 = 64     // PopWinSize is the size of the sliding window used to hash input.
-	MaxElem        uint32 = 160    // MaxElem is the maximum number of elements per bloom filter in stream mode.
-	MaxElemDd      uint32 = 192    // MaxElemDd is the maximum number of elements per bloom filter in block mode.
-	Threshold      uint32 = 16     // Threshold is the minimum score for a chunk position to be hashed.
-	BlockSize             = 4 * kB // BlockSize is the block size used to generate chunk ranks.
-	EntropyWinSize        = 64     // EntropyWinSize is the entropy window size used to generate chunk ranks.
-)
-
 const (
 	// MinFileSize is the minimum input size (in bytes) required to compute a digest.
 	MinFileSize = 512
 	BfSize      = 256 // BfSize is the size in bytes of each bloom filter.
+
+	PopWinSize     = 64     // PopWinSize is the size of the sliding window used to hash input.
+	MaxElem        = 160    // MaxElem is the maximum number of elements per bloom filter in stream mode.
+	MaxElemDd      = 192    // MaxElemDd is the maximum number of elements per bloom filter in block mode.
+	Threshold      = 16     // Threshold is the minimum score for a chunk position to be hashed.
+	BlockSize      = 4 * kB // BlockSize is the block size used to generate chunk ranks.
+	EntropyWinSize = 64     // EntropyWinSize is the entropy window size used to generate chunk ranks.
 
 	kB           = 1024
 	mB           = kB * kB
