@@ -37,6 +37,8 @@ func getChunkSlice(size int) []uint16 {
 			clear(s)
 			return s
 		}
+		// Undersized slice intentionally dropped — returning it to the pool
+		// would permanently pollute it with slices too small to reuse.
 	}
 	return make([]uint16, size)
 }
