@@ -262,6 +262,14 @@ func ParseSdbfFromString(digest string) (Sdbf, error) {
 		return nil, fmt.Errorf("failed to read bloom filter count: %w", err)
 	}
 
+	const maxBfAlloc = 256 * 1024 * 1024
+	if bfSize == 0 {
+		return nil, errors.New("bloom filter size must be greater than zero")
+	}
+	if bfCount > maxBfAlloc/bfSize {
+		return nil, fmt.Errorf("bloom filter allocation too large: %d filters × %d bytes exceeds %d byte limit", bfCount, bfSize, maxBfAlloc)
+	}
+
 	switch magic {
 	case magicStream:
 		lastCount, err := readUint64Field(r)

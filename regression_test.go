@@ -25,6 +25,11 @@ import (
 // III. Issue 3 — Unbounded goroutine spawning in generateBlockSdbf
 //    https://github.com/malwarology/sdhash/issues/3
 // └── 00090000  High block count DD mode
+//
+// IV. Issue 4 — Unbounded memory allocation in ParseSdbfFromString
+//    https://github.com/malwarology/sdhash/issues/4
+// ├── 00100000  Parse oversized bfCount
+// └── 00110000  Parse zero bfSize
 
 // =========================================================================
 // I. Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -254,4 +259,47 @@ func TestIssue3_HighBlockCountDDMode(t *testing.T) {
 	mustNoError(t, err)
 
 	checkEqual(t, 100, sd.Compare(sd), "self-comparison must return 100")
+}
+
+// =========================================================================
+// IV. Issue 4 — Unbounded memory allocation in ParseSdbfFromString
+// https://github.com/malwarology/sdhash/issues/4
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00100000  Parse oversized bfCount
+// ---------------------------------------------------------------------------
+
+// TestIssue4_ParseOversizedBfCount verifies that a digest string with a
+// bfCount large enough to exceed the 256 MiB allocation limit is rejected
+// by ParseSdbfFromString rather than causing an OOM panic.
+func TestIssue4_ParseOversizedBfCount(t *testing.T) {
+	t.Parallel()
+
+	// bfCount of 999999999 with the default bfSize of 256 bytes would require
+	// ~238 GiB, far exceeding the 256 MiB cap.
+	digest := "sdbf:03:1:-:1048576:sha1:256:5:7ff:160:999999999:100:"
+
+	_, err := ParseSdbfFromString(digest)
+	checkError(t, err,
+		"ParseSdbfFromString must return an error for a bfCount that exceeds the allocation limit (regression: issue #4)")
+}
+
+// ---------------------------------------------------------------------------
+// 00110000  Parse zero bfSize
+// ---------------------------------------------------------------------------
+
+// TestIssue4_ParseZeroBfSize verifies that a digest string with bfSize set to
+// zero is rejected by ParseSdbfFromString rather than causing a divide-by-zero
+// panic inside the allocation sanity check.
+func TestIssue4_ParseZeroBfSize(t *testing.T) {
+	t.Parallel()
+
+	// bfSize of 0 must be caught before the allocation check to prevent
+	// a divide-by-zero when computing maxBfAlloc/bfSize.
+	digest := "sdbf:03:1:-:1048576:sha1:0:5:7ff:160:100:100:"
+
+	_, err := ParseSdbfFromString(digest)
+	checkError(t, err,
+		"ParseSdbfFromString must return an error for a bfSize of zero (regression: issue #4)")
 }
