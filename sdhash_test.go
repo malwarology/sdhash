@@ -435,8 +435,9 @@ func TestSdbfScore_DenominatorZero(t *testing.T) {
 	mustNoError(t, err, "parsing a 2-filter DD digest with zero elem counts must succeed")
 
 	checkEqual(t, uint32(2), sd.FilterCount(), "FilterCount must be 2")
-	checkEqual(t, -1, sd.Compare(sd),
-		"Compare with all-sparse filters and bfCount>1 must return -1 (denominator=0 path)")
+	inner := sd.(*sdbf)
+	checkEqual(t, -1, sdbfScore(inner, inner),
+		"sdbfScore with all-sparse filters and bfCount>1 must return -1 (denominator=0 path)")
 }
 
 // ---------------------------------------------------------------------------
