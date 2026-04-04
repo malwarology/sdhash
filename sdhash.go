@@ -114,8 +114,10 @@ func (sd *sdbf) Compare(other Sdbf) int {
 	}
 	sd.mu.RLock()
 	defer sd.mu.RUnlock()
-	o.mu.RLock()
-	defer o.mu.RUnlock()
+	if o != sd {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
+	}
 	return sdbfScore(sd, o)
 }
 
