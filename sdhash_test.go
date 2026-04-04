@@ -569,6 +569,7 @@ func TestParseSdbf_ErrorCases(t *testing.T) {
 		{"truncated DD missing block size field", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:"},
 		{"DD invalid hex elem count", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:zz:" + validB64 + "\n"},
 		{"DD invalid base64 block data", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:c0:!!invalid!!\n"},
+		{"DD invalid base64 content correct length", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:c0:" + strings.Repeat("!", 344) + "\n"},
 		{"truncated after version", "sdbf:03:"},
 		{"truncated after namelen", "sdbf:03:1:"},
 		{"truncated after origFileSize", "sdbf:03:1:-:1048576:"},
