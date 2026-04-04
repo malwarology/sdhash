@@ -2,26 +2,21 @@ package sdhash
 
 import "fmt"
 
-// createSdbf creates and digests a sdbf from a byte buffer.
+// populateSdbf fills in the mode-specific state of sd by computing ranks,
+// scores, and hashes from buffer. It is separated from createSdbf so that
+// tests can pass a deliberately broken *sdbf to exercise the error-return
+// paths in both stream and block mode.
 //
 // IMPORTANT: Do not add a default index bloom filter here. Adding one causes
 // hash mismatches with the reference implementation.
-func createSdbf(buffer []byte, ddBlockSize uint32) (*sdbf, error) {
-	sd := &sdbf{
-		bfSize:         BfSize,
-		bfCount:        1,
-		bigFilters:     []*bloomFilter{mustNewBloomFilter(bigFilter, defaultHashCount, bigFilterElem)},
-		popWinSize:     PopWinSize,
-		threshold:      Threshold,
-		blockSize:      BlockSize,
-		entropyWinSize: EntropyWinSize,
-	}
-
+func populateSdbf(sd *sdbf, buffer []byte, ddBlockSize uint32) (*sdbf, error) {
 	fileSize := uint64(len(buffer))
 	sd.origFileSize = fileSize
 	if ddBlockSize == 0 { // stream mode
 		sd.maxElem = MaxElem
-		sd.generateChunkSdbf(buffer, 32*mB)
+		if err := sd.generateChunkSdbf(buffer, 32*mB); err != nil {
+			return nil, err
+		}
 	} else { // block mode
 		if ddBlockSize < PopWinSize {
 			return nil, fmt.Errorf("block size %d is less than minimum %d", ddBlockSize, PopWinSize)
@@ -35,11 +30,25 @@ func createSdbf(buffer []byte, ddBlockSize uint32) (*sdbf, error) {
 		sd.ddBlockSize = ddBlockSize
 		sd.buffer = make([]byte, ddBlockCnt*uint64(BfSize))
 		sd.elemCounts = make([]uint16, ddBlockCnt)
-		sd.generateBlockSdbf(buffer)
+		if err := sd.generateBlockSdbf(buffer); err != nil {
+			return nil, err
+		}
 	}
 	sd.computeHamming()
-
 	return sd, nil
+}
+
+// createSdbf creates and digests a sdbf from a byte buffer.
+func createSdbf(buffer []byte, ddBlockSize uint32) (*sdbf, error) {
+	return populateSdbf(&sdbf{
+		bfSize:         BfSize,
+		bfCount:        1,
+		bigFilters:     []*bloomFilter{mustNewBloomFilter(bigFilter, defaultHashCount, bigFilterElem)},
+		popWinSize:     PopWinSize,
+		threshold:      Threshold,
+		blockSize:      BlockSize,
+		entropyWinSize: EntropyWinSize,
+	}, buffer, ddBlockSize)
 }
 
 // SdbfFactory creates a Sdbf digest from a binary source.

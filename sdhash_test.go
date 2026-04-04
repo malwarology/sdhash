@@ -39,16 +39,22 @@ import (
 // ├── 00190000  generateChunkSdbf multi-chunk parallel
 // ├── 00200000  generateChunkSdbf chunk size too small
 // ├── 00210000  generateChunkSdbf exactly one chunk
-// └── 00220000  generateChunkSdbf multi-chunk sparse last filter
+// ├── 00220000  generateChunkSdbf multi-chunk sparse last filter
+// ├── 00230000  generateChunkSdbf goroutine panic recovery
+// └── 00240000  generateBlockSdbf goroutine panic recovery
 //
 // V. sdhash.go
-// ├── 00230000  ParseSdbfFromString error cases
-// ├── 00240000  ParseSdbfFromString stream without trailing newline
-// ├── 00250000  FeatureDensity zero-filled
-// ├── 00260000  FeatureDensity high entropy
-// ├── 00270000  FeatureDensity DD mode
-// ├── 00280000  FeatureDensity parsed digest
-// └── 00290000  FeatureDensity zero origFileSize
+// ├── 00250000  ParseSdbfFromString error cases
+// ├── 00260000  ParseSdbfFromString stream without trailing newline
+// ├── 00270000  FeatureDensity zero-filled
+// ├── 00280000  FeatureDensity high entropy
+// ├── 00290000  FeatureDensity DD mode
+// ├── 00300000  FeatureDensity parsed digest
+// └── 00310000  FeatureDensity zero origFileSize
+//
+// VI. factory.go
+// ├── 00320000  populateSdbf stream mode error propagation
+// └── 00330000  populateSdbf block mode error propagation
 
 // =========================================================================
 // I. General
@@ -466,8 +472,8 @@ func TestGenerateChunkSdbf_MultiChunk(t *testing.T) {
 // 00200000  generateChunkSdbf chunk size too small
 // ---------------------------------------------------------------------------
 
-// TestGenerateChunkSdbf_ChunkSizeTooSmall verifies the guard that fires when
-// chunkSize is not strictly greater than popWinSize.
+// TestGenerateChunkSdbf_ChunkSizeTooSmall verifies that generateChunkSdbf
+// returns an error when chunkSize is not strictly greater than popWinSize.
 func TestGenerateChunkSdbf_ChunkSizeTooSmall(t *testing.T) {
 	t.Parallel()
 
@@ -475,10 +481,8 @@ func TestGenerateChunkSdbf_ChunkSizeTooSmall(t *testing.T) {
 	sd := newTestSdbf(t)
 	sd.origFileSize = uint64(MinFileSize)
 
-	checkPanics(t,
-		func() { sd.generateChunkSdbf(buf, uint64(PopWinSize)) },
-		"chunkSize <= popWinSize must panic",
-	)
+	err := sd.generateChunkSdbf(buf, uint64(PopWinSize))
+	checkError(t, err, "chunkSize <= popWinSize must return an error")
 }
 
 // ---------------------------------------------------------------------------
@@ -542,12 +546,75 @@ func TestGenerateChunkSdbf_MultiChunk_SparseLastFilter(t *testing.T) {
 		"pruned multi-chunk digest must self-compare at 100")
 }
 
+// ---------------------------------------------------------------------------
+// 00230000  generateChunkSdbf goroutine panic recovery
+// ---------------------------------------------------------------------------
+
+// TestGenerateChunkSdbf_GoroutinePanicRecovery verifies that a panic inside a
+// generateChunkSdbf goroutine is recovered and returned as an error rather than
+// terminating the process.
+//
+// Construction: sd.blockSize is set to 0 so that generateChunkRanks, which is
+// called inside each Phase 1 goroutine, triggers an integer divide-by-zero on
+// its very first iteration (offset % sd.blockSize). generateChunkSdbf allocates
+// sd.buffer itself at function entry, so nil-ing it beforehand has no effect;
+// blockSize is the correct lever. A 4 MiB buffer with a 1 MiB chunk size
+// produces qt=4, exercising the parallel goroutine pool and recover path.
+func TestGenerateChunkSdbf_GoroutinePanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	const chunkSize = 1 << 20
+	buf := randomBuf(4*chunkSize, 100, 100)
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(len(buf))
+	sd.blockSize = 0 // divide-by-zero in generateChunkRanks inside the goroutines
+
+	var err error
+	checkNotPanics(t,
+		func() { err = sd.generateChunkSdbf(buf, chunkSize) },
+		"generateChunkSdbf must not propagate a goroutine panic to the caller",
+	)
+	checkError(t, err, "generateChunkSdbf must return an error when a goroutine panics")
+}
+
+// ---------------------------------------------------------------------------
+// 00240000  generateBlockSdbf goroutine panic recovery
+// ---------------------------------------------------------------------------
+
+// TestGenerateBlockSdbf_GoroutinePanicRecovery verifies that a panic inside a
+// generateBlockSdbf goroutine is recovered and returned as an error rather than
+// terminating the process.
+//
+// Construction: sd.buffer and sd.elemCounts are left nil so that
+// generateSingleBlockSdbf → generateBlockHash panics when it indexes into
+// sd.buffer. A 1 MiB buffer with a 1 KiB block size produces many parallel
+// blocks, ensuring the goroutine pool and recover path are exercised.
+func TestGenerateBlockSdbf_GoroutinePanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = 1024
+	buf := randomBuf(1<<20, 101, 101)
+	sd := newTestSdbf(t)
+	sd.ddBlockSize = blockSize
+	sd.maxElem = MaxElemDd
+	sd.origFileSize = uint64(len(buf))
+	// sd.buffer and sd.elemCounts intentionally left nil to force a panic
+	// inside generateSingleBlockSdbf when it calls generateBlockHash.
+
+	var err error
+	checkNotPanics(t,
+		func() { err = sd.generateBlockSdbf(buf) },
+		"generateBlockSdbf must not propagate a goroutine panic to the caller",
+	)
+	checkError(t, err, "generateBlockSdbf must return an error when a goroutine panics")
+}
+
 // =========================================================================
 // V. sdhash.go
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00230000  ParseSdbfFromString error cases
+// 00250000  ParseSdbfFromString error cases
 // ---------------------------------------------------------------------------
 
 func TestParseSdbf_ErrorCases(t *testing.T) {
@@ -593,7 +660,7 @@ func TestParseSdbf_ErrorCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00240000  ParseSdbfFromString stream without trailing newline
+// 00260000  ParseSdbfFromString stream without trailing newline
 // ---------------------------------------------------------------------------
 
 // TestParseSdbf_StreamWithoutTrailingNewline verifies that a digest string
@@ -614,7 +681,7 @@ func TestParseSdbf_StreamWithoutTrailingNewline(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00250000  FeatureDensity zero-filled
+// 00270000  FeatureDensity zero-filled
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroFilled verifies that a zero-filled buffer produces
@@ -629,7 +696,7 @@ func TestFeatureDensity_ZeroFilled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00260000  FeatureDensity high entropy
+// 00280000  FeatureDensity high entropy
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_HighEntropy verifies that a high-entropy random buffer
@@ -644,7 +711,7 @@ func TestFeatureDensity_HighEntropy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00270000  FeatureDensity DD mode
+// 00290000  FeatureDensity DD mode
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_DDMode verifies that FeatureDensity works correctly in
@@ -659,7 +726,7 @@ func TestFeatureDensity_DDMode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00280000  FeatureDensity parsed digest
+// 00300000  FeatureDensity parsed digest
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ParsedDigest verifies that FeatureDensity is correct on
@@ -675,7 +742,7 @@ func TestFeatureDensity_ParsedDigest(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00290000  FeatureDensity zero origFileSize
+// 00310000  FeatureDensity zero origFileSize
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroOrigFileSize verifies that FeatureDensity returns 0
@@ -691,4 +758,67 @@ func TestFeatureDensity_ZeroOrigFileSize(t *testing.T) {
 	mustNoError(t, err, "parsing a stream digest with origFileSize=0 must succeed")
 	checkEqual(t, float64(0), sd.FeatureDensity(),
 		"FeatureDensity must return 0 when origFileSize is 0")
+}
+
+// =========================================================================
+// VI. factory.go
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00320000  populateSdbf stream mode error propagation
+// ---------------------------------------------------------------------------
+
+// TestPopulateSdbf_StreamModeErrorPropagation verifies that an error returned
+// by generateChunkSdbf is propagated by populateSdbf rather than silently
+// dropped.
+//
+// Construction: sd.blockSize is set to 0 so that generateChunkRanks, called
+// inside each Phase 1 goroutine, triggers an integer divide-by-zero on its
+// first iteration. The buffer must exceed the 32 MiB chunk size that
+// populateSdbf passes to generateChunkSdbf; a smaller buffer produces
+// totalChunks=1 and hits the single-chunk fast path, which runs
+// generateChunkRanks directly in the calling goroutine with no recover in
+// scope. 33 MiB gives qt=1 and a 1 MiB remainder (totalChunks=2), which is
+// the minimum configuration that exercises the goroutine recover path.
+func TestPopulateSdbf_StreamModeErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	buf := make([]byte, 33<<20) // 33 MiB — must exceed the 32 MiB chunk size
+	sd := newTestSdbf(t)
+	sd.blockSize = 0 // divide-by-zero in generateChunkRanks inside the goroutines
+
+	var err error
+	checkNotPanics(t,
+		func() { _, err = populateSdbf(sd, buf, 0) },
+		"populateSdbf must not propagate a goroutine panic to the caller",
+	)
+	checkError(t, err, "populateSdbf must propagate an error from generateChunkSdbf")
+}
+
+// ---------------------------------------------------------------------------
+// 00330000  populateSdbf block mode error propagation
+// ---------------------------------------------------------------------------
+
+// TestPopulateSdbf_BlockModeErrorPropagation verifies that an error returned
+// by generateBlockSdbf is propagated by populateSdbf rather than silently
+// dropped.
+//
+// Construction: sd.blockSize is set to 0 so that generateChunkRanks, called
+// inside each block goroutine via generateSingleBlockSdbf, triggers an integer
+// divide-by-zero on its first iteration. A buffer of 4×ddBlockSize produces
+// qt=4 goroutines, exercising the parallel block path.
+func TestPopulateSdbf_BlockModeErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	const ddBlockSize = 1024
+	buf := randomBuf(4*ddBlockSize, 201, 201)
+	sd := newTestSdbf(t)
+	sd.blockSize = 0 // divide-by-zero in generateChunkRanks inside the goroutines
+
+	var err error
+	checkNotPanics(t,
+		func() { _, err = populateSdbf(sd, buf, ddBlockSize) },
+		"populateSdbf must not propagate a goroutine panic to the caller",
+	)
+	checkError(t, err, "populateSdbf must propagate an error from generateBlockSdbf")
 }

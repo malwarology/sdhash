@@ -238,6 +238,19 @@ func (sd *sdbf) generateBlockHash(fileBuffer []byte, blockNum uint64, chunkScore
 	sd.elemCounts[blockNum] = uint16(hashCnt)
 }
 
+// captureGoroutinePanic is deferred inside goroutines spawned by
+// generateChunkSdbf and generateBlockSdbf. It recovers any panic and stores
+// it as an error, using panicOnce to guarantee only one goroutine writes
+// panicErr. Extracting this into a named function gives the coverage tool a
+// single closure body to instrument rather than one per goroutine type.
+func captureGoroutinePanic(panicErr *error, panicOnce *sync.Once) {
+	if r := recover(); r != nil {
+		panicOnce.Do(func() {
+			*panicErr = fmt.Errorf("panic in goroutine: %v", r)
+		})
+	}
+}
+
 // generateChunkSdbf computes the sdbf hash for a buffer in stream mode.
 //
 // For files spanning more than one chunk, the work is split into two phases:
@@ -255,9 +268,9 @@ func (sd *sdbf) generateBlockHash(fileBuffer []byte, blockNum uint64, chunkScore
 //
 // Files that fit in a single chunk skip the parallel machinery entirely and
 // follow the original sequential path.
-func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) {
+func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) error {
 	if chunkSize <= uint64(sd.popWinSize) {
-		panic(fmt.Sprintf("chunkSize %d must be greater than popWinSize %d", chunkSize, sd.popWinSize))
+		return fmt.Errorf("chunkSize %d must be greater than popWinSize %d", chunkSize, sd.popWinSize)
 	}
 
 	fileSize := uint64(len(fileBuffer))
@@ -296,7 +309,7 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) {
 		if uint64(sd.bfCount)*uint64(sd.bfSize) < buffSize {
 			sd.buffer = sd.buffer[:sd.bfCount*sd.bfSize]
 		}
-		return
+		return nil
 	}
 
 	// Multi-chunk path.
@@ -313,12 +326,18 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) {
 	sem := make(chan struct{}, runtime.NumCPU())
 	var wg sync.WaitGroup
 
+	var (
+		panicErr  error
+		panicOnce sync.Once
+	)
+
 	for i := uint64(0); i < qt; i++ {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(idx uint64) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer captureGoroutinePanic(&panicErr, &panicOnce)
 			ranks := getChunkSlice(int(chunkSize))
 			scores := getChunkSlice(int(chunkSize))
 			sd.generateChunkRanks(fileBuffer[chunkSize*idx:chunkSize*(idx+1)], ranks)
@@ -333,6 +352,7 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer captureGoroutinePanic(&panicErr, &panicOnce)
 			// Allocate ranks at full chunkSize so the slice is always large
 			// enough regardless of rem; generateChunkRanks only writes up to
 			// len(fileBuffer)-entropyWinSize entries.
@@ -345,6 +365,9 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) {
 		}()
 	}
 	wg.Wait()
+	if panicErr != nil {
+		return panicErr
+	}
 
 	// Phase 2: sequential hash insertion in original chunk order.
 	// generateChunkHash is called in exactly the same order (0, 1, 2, … qt,
@@ -368,6 +391,7 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) {
 	if uint64(sd.bfCount)*uint64(sd.bfSize) < buffSize {
 		sd.buffer = sd.buffer[:sd.bfCount*sd.bfSize]
 	}
+	return nil
 }
 
 // generateSingleBlockSdbf is the goroutine worker for parallel block hash generation.
@@ -394,10 +418,15 @@ func (sd *sdbf) generateSingleBlockSdbf(fileBuffer []byte, blockNum uint64) {
 }
 
 // generateBlockSdbf computes the sdbf hash for a buffer in block-aligned (dd) mode.
-func (sd *sdbf) generateBlockSdbf(fileBuffer []byte) {
+func (sd *sdbf) generateBlockSdbf(fileBuffer []byte) error {
 	blockSize := uint64(sd.ddBlockSize)
 	qt := uint64(len(fileBuffer)) / blockSize
 	rem := uint64(len(fileBuffer)) % blockSize
+
+	var (
+		panicErr  error
+		panicOnce sync.Once
+	)
 
 	sem := make(chan struct{}, runtime.NumCPU())
 	var wg sync.WaitGroup
@@ -407,10 +436,14 @@ func (sd *sdbf) generateBlockSdbf(fileBuffer []byte) {
 		go func(idx uint64) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer captureGoroutinePanic(&panicErr, &panicOnce)
 			sd.generateSingleBlockSdbf(fileBuffer[blockSize*idx:blockSize*(idx+1)], idx)
 		}(i)
 	}
 	wg.Wait()
+	if panicErr != nil {
+		return panicErr
+	}
 
 	if rem >= MinFileSize {
 		chunkRanks := getChunkSlice(int(blockSize))
@@ -423,4 +456,5 @@ func (sd *sdbf) generateBlockSdbf(fileBuffer []byte) {
 		sd.generateChunkScores(chunkRanks, rem, chunkScores, nil)
 		sd.generateBlockHash(remBuffer, qt, chunkScores, uint32(rem), sd.threshold, int32(sd.maxElem))
 	}
+	return nil
 }
