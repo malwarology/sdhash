@@ -73,6 +73,25 @@ if err != nil {
 }
 ```
 
+### Parsing digests from a file
+
+```go
+f, err := os.Open("digests.sdbf")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+r := bufio.NewReader(f)
+for {
+    digest, err := sdhash.ParseSdbfFromReader(r)
+    if err != nil {
+        break
+    }
+    fmt.Println(digest.Size())
+}
+```
+
 ### High-throughput processing
 
 The recommended pattern for processing many inputs concurrently is one goroutine per input. Each `Compute` call produces a fully independent `Sdbf` with no shared state.
@@ -113,6 +132,9 @@ type SdbfFactory interface {
 
 // ParseSdbfFromString decodes a digest from a wire-format string.
 func ParseSdbfFromString(string) (Sdbf, error)
+
+// ParseSdbfFromReader decodes a single digest from a reader.
+func ParseSdbfFromReader(io.Reader) (Sdbf, error)
 
 // Sdbf is a computed similarity digest.
 type Sdbf interface {

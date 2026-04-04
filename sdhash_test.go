@@ -1,6 +1,7 @@
 package sdhash
 
 import (
+	"bufio"
 	"encoding/base64"
 	"fmt"
 	"math/rand/v2"
@@ -50,11 +51,12 @@ import (
 // ├── 00280000  FeatureDensity high entropy
 // ├── 00290000  FeatureDensity DD mode
 // ├── 00300000  FeatureDensity parsed digest
-// └── 00310000  FeatureDensity zero origFileSize
+// ├── 00310000  FeatureDensity zero origFileSize
+// └── 00320000  ParseSdbfFromReader multiple digests
 //
 // VI. factory.go
-// ├── 00320000  populateSdbf stream mode error propagation
-// └── 00330000  populateSdbf block mode error propagation
+// ├── 00330000  populateSdbf stream mode error propagation
+// └── 00340000  populateSdbf block mode error propagation
 
 // =========================================================================
 // I. General
@@ -777,12 +779,47 @@ func TestFeatureDensity_ZeroOrigFileSize(t *testing.T) {
 		"FeatureDensity must return 0 when origFileSize is 0")
 }
 
+// ---------------------------------------------------------------------------
+// 00320000  ParseSdbfFromReader multiple digests
+// ---------------------------------------------------------------------------
+
+// TestParseSdbfFromReader_MultipleDigests verifies that ParseSdbfFromReader
+// correctly parses multiple digests sequentially from a single reader, and
+// returns an error once all digests have been consumed.
+func TestParseSdbfFromReader_MultipleDigests(t *testing.T) {
+	t.Parallel()
+	buf1 := randomBuf(1<<20, 1, 1)
+	buf2 := randomBuf(1<<20, 2, 2)
+	buf3 := randomBuf(1<<20, 3, 3)
+	sd1 := streamDigest(t, buf1)
+	sd2 := streamDigest(t, buf2)
+	sd3 := streamDigest(t, buf3)
+
+	concatenated := sd1.String() + sd2.String() + sd3.String()
+	r := bufio.NewReader(strings.NewReader(concatenated))
+
+	parsed1, err := ParseSdbfFromReader(r)
+	mustNoError(t, err, "first ParseSdbfFromReader must succeed")
+	checkEqual(t, sd1.String(), parsed1.String(), "first parsed digest must match original")
+
+	parsed2, err := ParseSdbfFromReader(r)
+	mustNoError(t, err, "second ParseSdbfFromReader must succeed")
+	checkEqual(t, sd2.String(), parsed2.String(), "second parsed digest must match original")
+
+	parsed3, err := ParseSdbfFromReader(r)
+	mustNoError(t, err, "third ParseSdbfFromReader must succeed")
+	checkEqual(t, sd3.String(), parsed3.String(), "third parsed digest must match original")
+
+	_, err = ParseSdbfFromReader(r)
+	checkError(t, err, "fourth ParseSdbfFromReader must return an error at EOF")
+}
+
 // =========================================================================
 // VI. factory.go
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00320000  populateSdbf stream mode error propagation
+// 00330000  populateSdbf stream mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_StreamModeErrorPropagation verifies that an error returned
@@ -813,7 +850,7 @@ func TestPopulateSdbf_StreamModeErrorPropagation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00330000  populateSdbf block mode error propagation
+// 00340000  populateSdbf block mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_BlockModeErrorPropagation verifies that an error returned

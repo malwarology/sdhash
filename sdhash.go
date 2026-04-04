@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/bits"
 	"strconv"
@@ -212,9 +213,15 @@ func skipField(r *bufio.Reader) error {
 	return err
 }
 
-// ParseSdbfFromString decodes a Sdbf from a digest string in sdbf wire format.
-func ParseSdbfFromString(digest string) (Sdbf, error) {
-	r := bufio.NewReader(strings.NewReader(digest))
+// ParseSdbfFromReader decodes a single Sdbf from a reader in sdbf wire format.
+// The reader is consumed through the end of the digest, including the trailing
+// newline if present. For files containing multiple digests, call this function
+// repeatedly until io.EOF is encountered.
+func ParseSdbfFromReader(reader io.Reader) (Sdbf, error) {
+	r, ok := reader.(*bufio.Reader)
+	if !ok {
+		r = bufio.NewReader(reader)
+	}
 
 	sd := &sdbf{}
 
@@ -363,4 +370,9 @@ func ParseSdbfFromString(digest string) (Sdbf, error) {
 	sd.computeHamming()
 
 	return sd, nil
+}
+
+// ParseSdbfFromString decodes a Sdbf from a digest string in sdbf wire format.
+func ParseSdbfFromString(digest string) (Sdbf, error) {
+	return ParseSdbfFromReader(strings.NewReader(digest))
 }
