@@ -129,15 +129,15 @@ func (sd *sdbf) String() string {
 	var sb strings.Builder
 	isStream := sd.elemCounts == nil
 	if isStream {
-		sb.WriteString(fmt.Sprintf("%s:%02d:", magicStream, sdbfVersion))
+		_, _ = fmt.Fprintf(&sb, "%s:%02d:", magicStream, sdbfVersion)
 	} else {
-		sb.WriteString(fmt.Sprintf("%s:%02d:", magicDD, sdbfVersion))
+		_, _ = fmt.Fprintf(&sb, "%s:%02d:", magicDD, sdbfVersion)
 	}
-	sb.WriteString(fmt.Sprintf("1:-:%d:sha1:", sd.origFileSize))
-	sb.WriteString(fmt.Sprintf("%d:%d:%x:", sd.bfSize, defaultHashCount, defaultMask))
+	_, _ = fmt.Fprintf(&sb, "1:-:%d:sha1:", sd.origFileSize)
+	_, _ = fmt.Fprintf(&sb, "%d:%d:%x:", sd.bfSize, defaultHashCount, defaultMask)
 
 	if isStream {
-		sb.WriteString(fmt.Sprintf("%d:%d:%d:", sd.maxElem, sd.bfCount, sd.lastCount))
+		_, _ = fmt.Fprintf(&sb, "%d:%d:%d:", sd.maxElem, sd.bfCount, sd.lastCount)
 		qt, rem := sd.bfCount/6, sd.bfCount%6
 		b64Block := uint64(6 * sd.bfSize)
 		var pos uint64
@@ -149,9 +149,9 @@ func (sd *sdbf) String() string {
 			sb.WriteString(base64.StdEncoding.EncodeToString(sd.buffer[pos : pos+uint64(rem*sd.bfSize)]))
 		}
 	} else {
-		sb.WriteString(fmt.Sprintf("%d:%d:%d", sd.maxElem, sd.bfCount, sd.ddBlockSize))
+		_, _ = fmt.Fprintf(&sb, "%d:%d:%d", sd.maxElem, sd.bfCount, sd.ddBlockSize)
 		for i := uint32(0); i < sd.bfCount; i++ {
-			sb.WriteString(fmt.Sprintf(":%02x:", sd.elemCounts[i]))
+			_, _ = fmt.Fprintf(&sb, ":%02x:", sd.elemCounts[i])
 			sb.WriteString(base64.StdEncoding.EncodeToString(sd.buffer[i*sd.bfSize : i*sd.bfSize+sd.bfSize]))
 		}
 	}
