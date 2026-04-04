@@ -16,6 +16,12 @@ import (
 // Issue 23 — ParseSdbfFromString: base64.Decode panics on malformed DD block payload
 //    https://github.com/malwarology/sdhash/issues/23
 // └── dec42c3bb0b43d05  Malformed base64 content triggers decodeQuantum OOB
+//
+// FuzzCompute — CreateSdbfFromBytes / Compute: exercises the digest generation
+// pipeline (stream mode and DD block mode) with arbitrary raw byte inputs.
+// No known findings.
+//
+// Run fuzzer: go test -run='^$' -fuzz=FuzzCompute -fuzztime=30s ./...
 
 func FuzzParseSdbfFromString(f *testing.F) {
 	// 1. Valid stream digest
@@ -62,5 +68,44 @@ func FuzzParseSdbfFromString(f *testing.F) {
 		_ = sd.FilterCount()
 		_ = sd.FeatureDensity()
 		_ = sd.Compare(sd)
+	})
+}
+
+func FuzzCompute(f *testing.F) {
+	// 1. 512 bytes of zeros — minimum file size, low entropy
+	f.Add(make([]byte, 512))
+
+	// 2. 1024 bytes of pseudo-random data — small random file
+	f.Add(randomBuf(1024, 1, 1))
+
+	// 3. 65536 bytes of pseudo-random data — medium random file
+	f.Add(randomBuf(65536, 2, 2))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		factory, err := CreateSdbfFromBytes(data)
+		if err != nil {
+			return // too small, expected
+		}
+
+		// Stream mode
+		sd, err := factory.Compute()
+		if err != nil {
+			return
+		}
+		_ = sd.String()
+		_ = sd.Size()
+		_ = sd.InputSize()
+		_ = sd.FilterCount()
+		_ = sd.FeatureDensity()
+		_ = sd.Compare(sd)
+
+		// DD mode with a block size that is valid for any input that passed MinFileSize
+		dd, err := factory.WithBlockSize(512).Compute()
+		if err != nil {
+			return
+		}
+		_ = dd.String()
+		_ = dd.FeatureDensity()
+		_ = dd.Compare(dd)
 	})
 }
