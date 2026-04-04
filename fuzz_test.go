@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+// Fuzz test index
+//
+// Saved corpus entries in testdata/fuzz/ are replayed as regression tests
+// by go test automatically. No -fuzz flag needed for replay.
+//
+// Run fuzzer: go test -run='^$' -fuzz=FuzzParseSdbfFromString -fuzztime=30s ./...
+//
+// Issue 23 — ParseSdbfFromString: base64.Decode panics on malformed DD block payload
+//    https://github.com/malwarology/sdhash/issues/23
+// └── dec42c3bb0b43d05  Malformed base64 content triggers decodeQuantum OOB
+
 func FuzzParseSdbfFromString(f *testing.F) {
 	// 1. Valid stream digest
 	payload256 := base64.StdEncoding.EncodeToString(make([]byte, 256))

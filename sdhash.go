@@ -326,14 +326,19 @@ func ParseSdbfFromString(digest string) (Sdbf, error) {
 				encodedStr = encodedBuffer[:len(encodedBuffer)-1]
 			}
 
-			dst := sd.buffer[i*bfSize : i*bfSize+bfSize]
-			n, err := base64.StdEncoding.Decode(dst, []byte(encodedStr))
+			expectedLen := base64.StdEncoding.EncodedLen(int(bfSize))
+			if len(encodedStr) != expectedLen {
+				return nil, fmt.Errorf("encoded block %d length %d does not match expected %d", i, len(encodedStr), expectedLen)
+			}
+
+			decoded, err := base64.StdEncoding.DecodeString(encodedStr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to decode data for filter %d: %w", i, err)
 			}
-			if n != int(bfSize) {
-				return nil, fmt.Errorf("decoded block %d length %d does not match bfSize %d", i, n, bfSize)
+			if len(decoded) != int(bfSize) {
+				return nil, fmt.Errorf("decoded block %d length %d does not match bfSize %d", i, len(decoded), bfSize)
 			}
+			copy(sd.buffer[i*bfSize:], decoded)
 		}
 		sd.ddBlockSize = uint32(ddBlockSize)
 
