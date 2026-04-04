@@ -65,6 +65,10 @@ import (
 // Issue 20 — Inner while loop evaluates array access before bounds guard
 //    https://github.com/malwarology/sdhash/issues/20
 // └── 00230000  generateChunkScores inner while loop OOB
+//
+// Issue 21 — WithBlockSize accepts values below PopWinSize causing underflow panic
+//    https://github.com/malwarology/sdhash/issues/21
+// └── 00240000  Small block size uint64 underflow
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -660,4 +664,35 @@ func TestIssue20_ChunkScoresInnerWhileOOB(t *testing.T) {
 
 	checkNotPanics(t, func() { sd.generateChunkScores(chunkRanks, 192, chunkScores, nil) },
 		"generateChunkScores must not panic near the end of the chunk (regression: issue #20)")
+}
+
+// =========================================================================
+// Issue 21 — WithBlockSize accepts values below PopWinSize causing underflow panic
+// https://github.com/malwarology/sdhash/issues/21
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00240000  Small block size uint64 underflow
+// ---------------------------------------------------------------------------
+
+// TestIssue21_SmallBlockSizeUnderflow verifies that passing a block size below
+// PopWinSize (64) to WithBlockSize causes Compute to return an error rather than
+// panicking. Without a validation check in createSdbf, the histogram loop in
+// generateChunkScores computes chunkSize-popWin as a uint64 subtraction that
+// underflows to a huge value, causing an out-of-bounds index and a goroutine
+// panic that terminates the process.
+func TestIssue21_SmallBlockSizeUnderflow(t *testing.T) {
+	t.Parallel()
+
+	buf := randomBuf(1<<20, 90, 90)
+
+	factory, err := CreateSdbfFromBytes(buf)
+	mustNoError(t, err)
+
+	var computeErr error
+	checkNotPanics(t, func() {
+		_, computeErr = factory.WithBlockSize(32).Compute()
+	}, "WithBlockSize(32).Compute() must not panic (regression: issue #21)")
+	checkError(t, computeErr,
+		"WithBlockSize(32).Compute() must return an error when block size is below PopWinSize (regression: issue #21)")
 }

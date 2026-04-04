@@ -23,6 +23,9 @@ func createSdbf(buffer []byte, ddBlockSize uint32) (*sdbf, error) {
 		sd.maxElem = MaxElem
 		sd.generateChunkSdbf(buffer, 32*mB)
 	} else { // block mode
+		if ddBlockSize < PopWinSize {
+			return nil, fmt.Errorf("block size %d is less than minimum %d", ddBlockSize, PopWinSize)
+		}
 		sd.maxElem = MaxElemDd
 		ddBlockCnt := fileSize / uint64(ddBlockSize)
 		if fileSize%uint64(ddBlockSize) >= MinFileSize {
