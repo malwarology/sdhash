@@ -75,7 +75,7 @@ func FuzzParseSdbfFromString(f *testing.F) {
 		_ = sd.InputSize()
 		_ = sd.FilterCount()
 		_ = sd.FeatureDensity()
-		_ = sd.Compare(sd)
+		_, _ = sd.Compare(sd)
 	})
 }
 
@@ -105,7 +105,7 @@ func FuzzCompute(f *testing.F) {
 		_ = sd.InputSize()
 		_ = sd.FilterCount()
 		_ = sd.FeatureDensity()
-		_ = sd.Compare(sd)
+		_, _ = sd.Compare(sd)
 
 		// DD mode with a block size that is valid for any input that passed MinFileSize
 		dd, err := factory.WithBlockSize(512).Compute()
@@ -114,7 +114,7 @@ func FuzzCompute(f *testing.F) {
 		}
 		_ = dd.String()
 		_ = dd.FeatureDensity()
-		_ = dd.Compare(dd)
+		_, _ = dd.Compare(dd)
 	})
 }
 

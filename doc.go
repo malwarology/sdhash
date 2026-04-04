@@ -28,7 +28,7 @@
 //	}
 //	fmt.Println(digest.String())
 //
-//	score := digest1.Compare(digest2)
+//	score, ok := digest1.Compare(digest2)
 //
 // # Degenerate digests
 //

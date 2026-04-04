@@ -56,7 +56,11 @@ if err != nil {
 ### Comparing two digests
 
 ```go
-score := digest1.Compare(digest2)
+score, ok := digest1.Compare(digest2)
+if !ok {
+    fmt.Println("comparison could not be performed")
+    return
+}
 fmt.Printf("similarity: %d/100\n", score)
 ```
 
@@ -112,7 +116,7 @@ func ParseSdbfFromString(string) (Sdbf, error)
 
 // Sdbf is a computed similarity digest.
 type Sdbf interface {
-    Compare(Sdbf) int                    // similarity score in [0, 100], or -1 if comparison cannot be performed
+    Compare(Sdbf) (int, bool)            // similarity score in [0, 100]; false if not comparable
     String() string                      // wire-format encoding
     Size() uint64                        // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
@@ -235,7 +239,12 @@ if d1.FeatureDensity() < 0.02 || d2.FeatureDensity() < 0.02 {
     return
 }
 
-fmt.Printf("similarity: %d/100\n", d1.Compare(d2))
+score, ok := d1.Compare(d2)
+if !ok {
+    fmt.Println("comparison could not be performed")
+    return
+}
+fmt.Printf("similarity: %d/100\n", score)
 ```
 
 This three-step pattern — crypto hash for identity, sdhash for similarity, density check for validity — covers the full range of inputs reliably, including the low-entropy and small-file cases where sdhash alone can produce misleading results.

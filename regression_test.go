@@ -101,7 +101,9 @@ func TestIssue1DefaultIndexNotCreated(t *testing.T) {
 	checkEqual(t, uint32(64), internal.lastCount,
 		"lastCount should match C++ reference (regression: issue #1)")
 
-	checkEqual(t, 100, sd.Compare(sd), "self-comparison must return 100")
+	score, ok := sd.Compare(sd)
+	checkTrue(t, ok, "self-comparison must be comparable")
+	checkEqual(t, 100, score, "self-comparison must return 100")
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +176,9 @@ func TestIssue1_StreamAndDDParsedScoreInRange(t *testing.T) {
 	mustNoError(t, err, "ParseSdbfFromString must succeed on issue1.dd")
 
 	var score int
-	checkNotPanics(t, func() { score = streamSD.Compare(ddSD) }, "cross-mode Compare must not panic")
+	var ok bool
+	checkNotPanics(t, func() { score, ok = streamSD.Compare(ddSD) }, "cross-mode Compare must not panic")
+	checkTrue(t, ok, "cross-mode Compare must be meaningful")
 	checkAtLeast(t, score, 0, "cross-mode score must be >= 0")
 	checkAtMost(t, score, 100, "cross-mode score must be <= 100")
 }
@@ -193,7 +197,9 @@ func TestIssue1_RoundTrip_StreamReference(t *testing.T) {
 	mustNoError(t, err)
 
 	checkEqual(t, raw, sd.String(), "ParseSdbfFromString→String must be identity for issue1.stream")
-	checkEqual(t, 100, sd.Compare(sd), "self-comparison of parsed issue1.stream digest must be 100")
+	score, ok := sd.Compare(sd)
+	checkTrue(t, ok, "self-comparison of parsed issue1.stream digest must be comparable")
+	checkEqual(t, 100, score, "self-comparison of parsed issue1.stream digest must be 100")
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +216,9 @@ func TestIssue1_RoundTrip_DDReference(t *testing.T) {
 	mustNoError(t, err)
 
 	checkEqual(t, raw, sd.String(), "ParseSdbfFromString→String must be identity for issue1.dd")
-	checkEqual(t, 100, sd.Compare(sd), "self-comparison of parsed issue1.dd digest must be 100")
+	score, ok := sd.Compare(sd)
+	checkTrue(t, ok, "self-comparison of parsed issue1.dd digest must be comparable")
+	checkEqual(t, 100, score, "self-comparison of parsed issue1.dd digest must be 100")
 }
 
 // =========================================================================
@@ -243,7 +251,8 @@ func TestIssue2_DegenerateStreamDigests(t *testing.T) {
 	// The stream comparison produces a false positive of 100.
 	// This documents the known failure mode; FeatureDensity is how
 	// callers detect it.
-	score := sdA.Compare(sdB)
+	score, ok := sdA.Compare(sdB)
+	checkTrue(t, ok, "issue2 stream comparison must be comparable")
 	checkEqual(t, 100, score,
 		"issue2 stream comparison produces a false positive of 100")
 }
@@ -263,7 +272,8 @@ func TestIssue2_DDModeNoFalsePositive(t *testing.T) {
 	ddA := ddDigest(t, dataA, 65536)
 	ddB := ddDigest(t, dataB, 65536)
 
-	score := ddA.Compare(ddB)
+	score, ok := ddA.Compare(ddB)
+	checkTrue(t, ok, "issue2 DD comparison must be comparable")
 	checkEqual(t, 0, score,
 		"issue2 DD comparison must be 0")
 }
@@ -294,7 +304,9 @@ func TestIssue3_HighBlockCountDDMode(t *testing.T) {
 	sd, err := factory.WithBlockSize(ddBlockSize).Compute()
 	mustNoError(t, err)
 
-	checkEqual(t, 100, sd.Compare(sd), "self-comparison must return 100")
+	score, ok := sd.Compare(sd)
+	checkTrue(t, ok, "self-comparison must be comparable")
+	checkEqual(t, 100, score, "self-comparison must return 100")
 }
 
 // =========================================================================
@@ -520,8 +532,9 @@ func TestIssue15_DDParseWithoutTrailingNewline(t *testing.T) {
 
 	checkEqual(t, sd.String(), parsed.String(),
 		"parsed digest String() must equal the original (regression: issue #15)")
-	checkEqual(t, 100, parsed.Compare(parsed),
-		"self-comparison of parsed digest must return 100 (regression: issue #15)")
+	score, ok := parsed.Compare(parsed)
+	checkTrue(t, ok, "self-comparison of parsed digest must be comparable (regression: issue #15)")
+	checkEqual(t, 100, score, "self-comparison of parsed digest must return 100 (regression: issue #15)")
 }
 
 // =========================================================================
@@ -543,11 +556,11 @@ func TestIssue17_CompareNilSdbf(t *testing.T) {
 	buf := randomBuf(1<<20, 80, 80)
 	sd := streamDigest(t, buf)
 
-	var score int
-	checkNotPanics(t, func() { score = sd.Compare(nil) },
+	var ok bool
+	checkNotPanics(t, func() { _, ok = sd.Compare(nil) },
 		"Compare(nil) must not panic (regression: issue #17)")
-	checkEqual(t, -1, score,
-		"Compare(nil) must return -1 (regression: issue #17)")
+	checkTrue(t, !ok,
+		"Compare(nil) must not be comparable (regression: issue #17)")
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +576,7 @@ type foreignSdbfImpl struct{}
 func (f *foreignSdbfImpl) Size() uint64            { return 0 }
 func (f *foreignSdbfImpl) InputSize() uint64       { return 0 }
 func (f *foreignSdbfImpl) FilterCount() uint32     { return 0 }
-func (f *foreignSdbfImpl) Compare(Sdbf) int        { return 0 }
+func (f *foreignSdbfImpl) Compare(Sdbf) (int, bool) { return 0, false }
 func (f *foreignSdbfImpl) String() string          { return "" }
 func (f *foreignSdbfImpl) FeatureDensity() float64 { return 0 }
 
@@ -580,11 +593,11 @@ func TestIssue17_CompareForeignImpl(t *testing.T) {
 
 	foreign := &foreignSdbfImpl{}
 
-	var score int
-	checkNotPanics(t, func() { score = sd.Compare(foreign) },
+	var ok bool
+	checkNotPanics(t, func() { _, ok = sd.Compare(foreign) },
 		"Compare with a foreign Sdbf implementation must not panic (regression: issue #17)")
-	checkEqual(t, -1, score,
-		"Compare with a foreign Sdbf implementation must return -1 (regression: issue #17)")
+	checkTrue(t, !ok,
+		"Compare with a foreign Sdbf implementation must not be comparable (regression: issue #17)")
 }
 
 // =========================================================================

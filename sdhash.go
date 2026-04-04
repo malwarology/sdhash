@@ -27,12 +27,12 @@ type Sdbf interface {
 	// FilterCount returns the number of bloom filters in this Sdbf.
 	FilterCount() uint32
 
-	// Compare returns a similarity score in [0, 100] between this Sdbf and other.
-	// A score of 0 indicates very different data; 100 indicates identical data.
-	// Returns -1 if the comparison cannot be performed (e.g., either digest is
-	// degenerate and all filters fall below the minimum element threshold, or
-	// other was not produced by this package).
-	Compare(other Sdbf) int
+	// Compare returns a similarity score in [0, 100] between this Sdbf and other,
+	// and a boolean indicating whether the comparison was meaningful. Returns
+	// (0, false) if other is nil, was not produced by this package, or if both
+	// digests are degenerate and all filters fall below the minimum element
+	// threshold.
+	Compare(other Sdbf) (int, bool)
 
 	// String returns the digest encoded as a string in the sdbf wire format.
 	String() string
@@ -105,13 +105,13 @@ func (sd *sdbf) FeatureDensity() float64 {
 	return float64(totalElements) / float64(sd.origFileSize)
 }
 
-func (sd *sdbf) Compare(other Sdbf) int {
+func (sd *sdbf) Compare(other Sdbf) (int, bool) {
 	if other == nil {
-		return -1
+		return 0, false
 	}
 	o, ok := other.(*sdbf)
 	if !ok {
-		return -1
+		return 0, false
 	}
 	sd.mu.RLock()
 	defer sd.mu.RUnlock()
@@ -119,7 +119,11 @@ func (sd *sdbf) Compare(other Sdbf) int {
 		o.mu.RLock()
 		defer o.mu.RUnlock()
 	}
-	return sdbfScore(sd, o)
+	result := sdbfScore(sd, o)
+	if result < 0 {
+		return 0, false
+	}
+	return result, true
 }
 
 func (sd *sdbf) String() string {

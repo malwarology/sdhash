@@ -110,7 +110,9 @@ func TestStreamMode_SelfComparison(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 1, 1)
 	sd := streamDigest(t, buf)
-	checkEqual(t, 100, sd.Compare(sd), "self-comparison must return 100")
+	score, ok := sd.Compare(sd)
+	checkTrue(t, ok, "self-comparison must be comparable")
+	checkEqual(t, 100, score, "self-comparison must return 100")
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +136,9 @@ func TestDDMode_SelfComparison(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 1, 1)
 	sd := ddDigest(t, buf, 1024)
-	checkEqual(t, 100, sd.Compare(sd), "DD self-comparison must return 100")
+	score, ok := sd.Compare(sd)
+	checkTrue(t, ok, "DD self-comparison must be comparable")
+	checkEqual(t, 100, score, "DD self-comparison must return 100")
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +154,9 @@ func TestRoundTrip_Stream(t *testing.T) {
 	mustNoError(t, err, "ParseSdbfFromString must succeed on a valid stream digest string")
 
 	checkEqual(t, original.String(), parsed.String(), "round-tripped string must be identical")
-	checkEqual(t, 100, parsed.Compare(original), "round-tripped digest must score 100 against original")
+	score, ok := parsed.Compare(original)
+	checkTrue(t, ok, "round-tripped digest must be comparable")
+	checkEqual(t, 100, score, "round-tripped digest must score 100 against original")
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +172,9 @@ func TestRoundTrip_DD(t *testing.T) {
 	mustNoError(t, err, "ParseSdbfFromString must succeed on a valid DD digest string")
 
 	checkEqual(t, original.String(), parsed.String(), "round-tripped string must be identical")
-	checkEqual(t, 100, parsed.Compare(original), "round-tripped digest must score 100 against original")
+	score, ok := parsed.Compare(original)
+	checkTrue(t, ok, "round-tripped digest must be comparable")
+	checkEqual(t, 100, score, "round-tripped digest must score 100 against original")
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +188,9 @@ func TestCrossMode_DoesNotPanic(t *testing.T) {
 	dd := ddDigest(t, buf, 1024)
 
 	var score int
-	checkNotPanics(t, func() { score = stream.Compare(dd) }, "cross-mode Compare must not panic")
+	var ok bool
+	checkNotPanics(t, func() { score, ok = stream.Compare(dd) }, "cross-mode Compare must not panic")
+	checkTrue(t, ok, "cross-mode Compare must be meaningful")
 	checkAtLeast(t, score, 0, "cross-mode score must be >= 0")
 	checkAtMost(t, score, 100, "cross-mode score must be <= 100")
 }
@@ -198,7 +208,9 @@ func TestDissimilarData_ScoresLow(t *testing.T) {
 	// sdhash can return 1 on fully dissimilar random data due to floating-point
 	// rounding in the final score calculation. The important invariant is that the
 	// score is very low (effectively 0), not that it is exactly 0.
-	checkAtMost(t, sd1.Compare(sd2), 1, "dissimilar buffers must score 0 or 1")
+	score, ok := sd1.Compare(sd2)
+	checkTrue(t, ok, "dissimilar data must be comparable")
+	checkAtMost(t, score, 1, "dissimilar buffers must score 0 or 1")
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +234,9 @@ func TestSimilarData_ScoresHigh(t *testing.T) {
 
 	sd1 := streamDigest(t, buf1)
 	sd2 := streamDigest(t, buf2)
-	checkGreater(t, sd1.Compare(sd2), 0, "lightly modified buffer must score > 0")
+	score, ok := sd1.Compare(sd2)
+	checkTrue(t, ok, "similar data must be comparable")
+	checkGreater(t, score, 0, "lightly modified buffer must score > 0")
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +285,8 @@ func TestConcurrent_Compare(t *testing.T) {
 	buf2 := randomBuf(1<<20, 1, 1) // same seed → same data → score 100
 	sd1 := streamDigest(t, buf1)
 	sd2 := streamDigest(t, buf2)
-	expected := sd1.Compare(sd2)
+	expected, ok := sd1.Compare(sd2)
+	checkTrue(t, ok, "initial comparison must be comparable")
 
 	const goroutines = 20
 	scores := make([]int, goroutines)
@@ -280,7 +295,7 @@ func TestConcurrent_Compare(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			scores[idx] = sd1.Compare(sd2)
+			scores[idx], _ = sd1.Compare(sd2)
 		}(i)
 	}
 	wg.Wait()
@@ -413,8 +428,9 @@ func TestSdbfScore_ZeroBfCount(t *testing.T) {
 	mustNoError(t, err, "parsing a bfCount=0 stream digest must succeed")
 
 	checkEqual(t, uint32(0), sd.FilterCount(), "FilterCount must be 0")
-	checkEqual(t, -1, sd.Compare(sd),
-		"Compare on a zero-filter digest must return -1")
+	_, ok := sd.Compare(sd)
+	checkTrue(t, !ok,
+		"Compare on a zero-filter digest must not be comparable")
 }
 
 // ---------------------------------------------------------------------------
