@@ -52,11 +52,13 @@ import (
 // ├── 00290000  FeatureDensity DD mode
 // ├── 00300000  FeatureDensity parsed digest
 // ├── 00310000  FeatureDensity zero origFileSize
-// └── 00320000  ParseSdbfFromReader multiple digests
+// ├── 00320000  ParseSdbfFromReader multiple digests
+// ├── 00330000  ParseSdbfFromString stream with Windows line ending
+// └── 00340000  ParseSdbfFromString DD with Windows line ending
 //
 // VI. factory.go
-// ├── 00330000  populateSdbf stream mode error propagation
-// └── 00340000  populateSdbf block mode error propagation
+// ├── 00350000  populateSdbf stream mode error propagation
+// └── 00360000  populateSdbf block mode error propagation
 
 // =========================================================================
 // I. General
@@ -814,12 +816,62 @@ func TestParseSdbfFromReader_MultipleDigests(t *testing.T) {
 	checkError(t, err, "fourth ParseSdbfFromReader must return an error at EOF")
 }
 
+// ---------------------------------------------------------------------------
+// 00330000  ParseSdbfFromString stream with Windows line ending
+// ---------------------------------------------------------------------------
+
+// TestParseSdbf_StreamWithWindowsLineEnding verifies that a stream digest
+// string with a Windows-style '\r\n' line ending parses correctly and
+// round-trips identically to the canonical '\n'-terminated form.
+func TestParseSdbf_StreamWithWindowsLineEnding(t *testing.T) {
+	t.Parallel()
+	buf := randomBuf(1<<20, 95, 95)
+	sd := streamDigest(t, buf)
+
+	original := sd.String()
+	withCRLF := strings.TrimRight(original, "\n") + "\r\n"
+
+	parsed, err := ParseSdbfFromString(withCRLF)
+	mustNoError(t, err, "ParseSdbfFromString must succeed with Windows line ending")
+	checkEqual(t, original, parsed.String(),
+		"digest parsed from Windows line ending must produce canonical newline output")
+
+	score, ok := parsed.Compare(parsed)
+	checkTrue(t, ok, "self-comparison must be comparable")
+	checkEqual(t, 100, score, "self-comparison must return 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00340000  ParseSdbfFromString DD with Windows line ending
+// ---------------------------------------------------------------------------
+
+// TestParseSdbf_DDWithWindowsLineEnding verifies that a DD digest string
+// with a Windows-style '\r\n' line ending parses correctly and round-trips
+// identically to the canonical '\n'-terminated form.
+func TestParseSdbf_DDWithWindowsLineEnding(t *testing.T) {
+	t.Parallel()
+	buf := randomBuf(1<<20, 96, 96)
+	sd := ddDigest(t, buf, 65536)
+
+	original := sd.String()
+	withCRLF := strings.TrimRight(original, "\n") + "\r\n"
+
+	parsed, err := ParseSdbfFromString(withCRLF)
+	mustNoError(t, err, "ParseSdbfFromString must succeed with Windows line ending")
+	checkEqual(t, original, parsed.String(),
+		"digest parsed from Windows line ending must produce canonical newline output")
+
+	score, ok := parsed.Compare(parsed)
+	checkTrue(t, ok, "self-comparison must be comparable")
+	checkEqual(t, 100, score, "self-comparison must return 100")
+}
+
 // =========================================================================
 // VI. factory.go
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00330000  populateSdbf stream mode error propagation
+// 00350000  populateSdbf stream mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_StreamModeErrorPropagation verifies that an error returned
@@ -850,7 +902,7 @@ func TestPopulateSdbf_StreamModeErrorPropagation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00340000  populateSdbf block mode error propagation
+// 00360000  populateSdbf block mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_BlockModeErrorPropagation verifies that an error returned

@@ -295,11 +295,9 @@ func ParseSdbfFromReader(reader io.Reader) (Sdbf, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read last count: %w", err)
 		}
-		// Buffer is base64-encoded and terminated by '\n' (or EOF if no trailing newline).
+		// Buffer is base64-encoded and terminated by '\r\n', '\n', or EOF.
 		encodedBuffer, _ := r.ReadString('\n')
-		if len(encodedBuffer) > 0 && encodedBuffer[len(encodedBuffer)-1] == '\n' {
-			encodedBuffer = encodedBuffer[:len(encodedBuffer)-1] // strip newline
-		}
+		encodedBuffer = strings.TrimRight(encodedBuffer, "\r\n")
 		if sd.buffer, err = base64.StdEncoding.DecodeString(encodedBuffer); err != nil {
 			return nil, fmt.Errorf("failed to decode buffer: %w", err)
 		}
@@ -335,11 +333,11 @@ func ParseSdbfFromReader(reader io.Reader) (Sdbf, error) {
 				return nil, fmt.Errorf("element count %d for filter %d exceeds maxElem %d", elem, i, maxElem)
 			}
 
-			// Each block's base64 is delimited by ':' except the last, which ends at '\n' (or EOF).
+			// Each block's base64 is delimited by ':' except the last, which ends at '\r\n', '\n', or EOF.
 			encodedBuffer, readErr := r.ReadString(':')
 			var encodedStr string
 			if readErr != nil {
-				encodedStr = strings.TrimRight(encodedBuffer, "\n")
+				encodedStr = strings.TrimRight(encodedBuffer, "\r\n")
 			} else {
 				encodedStr = encodedBuffer[:len(encodedBuffer)-1]
 			}
