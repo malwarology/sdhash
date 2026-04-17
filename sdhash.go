@@ -10,13 +10,14 @@ import (
 	"math/bits"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // Sdbf represents the similarity digest of a file or byte buffer. Two Sdbf values
 // can be compared to produce a score indicating how similar their source data is.
 //
-// All methods are safe for concurrent use by multiple goroutines.
+// Sdbf values are immutable after construction. Every method is safe for
+// concurrent use by multiple goroutines because no field is ever written
+// after the factory returns.
 type Sdbf interface {
 
 	// Size returns the total byte size of the bloom filter data within this Sdbf.
@@ -48,7 +49,6 @@ type Sdbf interface {
 }
 
 type sdbf struct {
-	mu           sync.RWMutex   // protects all fields below for concurrent access
 	hamming      []uint16       // hamming weight for each bloom filter; always set after construction
 	buffer       []byte         // concatenated bloom filter data
 	maxElem      uint32         // max elements per filter
@@ -68,26 +68,18 @@ type sdbf struct {
 }
 
 func (sd *sdbf) Size() uint64 {
-	sd.mu.RLock()
-	defer sd.mu.RUnlock()
 	return uint64(sd.bfSize) * uint64(sd.bfCount)
 }
 
 func (sd *sdbf) InputSize() uint64 {
-	sd.mu.RLock()
-	defer sd.mu.RUnlock()
 	return sd.origFileSize
 }
 
 func (sd *sdbf) FilterCount() uint32 {
-	sd.mu.RLock()
-	defer sd.mu.RUnlock()
 	return sd.bfCount
 }
 
 func (sd *sdbf) FeatureDensity() float64 {
-	sd.mu.RLock()
-	defer sd.mu.RUnlock()
 	if sd.origFileSize == 0 {
 		return 0
 	}
@@ -114,12 +106,6 @@ func (sd *sdbf) Compare(other Sdbf) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	sd.mu.RLock()
-	defer sd.mu.RUnlock()
-	if o != sd {
-		o.mu.RLock()
-		defer o.mu.RUnlock()
-	}
 	result := sdbfScore(sd, o)
 	if result < 0 {
 		return 0, false
@@ -128,9 +114,6 @@ func (sd *sdbf) Compare(other Sdbf) (int, bool) {
 }
 
 func (sd *sdbf) String() string {
-	sd.mu.RLock()
-	defer sd.mu.RUnlock()
-
 	var sb strings.Builder
 	isStream := sd.elemCounts == nil
 	if isStream {
@@ -166,7 +149,6 @@ func (sd *sdbf) String() string {
 }
 
 // elemCount returns the element count for the filter at index.
-// The caller must hold at least a read lock.
 func (sd *sdbf) elemCount(index uint32) uint32 {
 	if sd.elemCounts == nil {
 		if index < sd.bfCount-1 {

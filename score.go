@@ -4,7 +4,6 @@ import "math"
 
 // sdbfScore calculates the similarity score (0–100) between two sdbf digests.
 // Both digests must have their hamming weights pre-computed (guaranteed after construction).
-// The caller must hold at least read locks on both sdbf1 and sdbf2.
 func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount
 
@@ -47,7 +46,6 @@ func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 // sdbfMaxScore calculates the maximum match of a single reference filter against all target filters.
 // Returns 0 if the reference filter has too few elements for a valid comparison, -1 if no target
 // filter had enough elements to score against, or a value in [0.0, 1.0] otherwise.
-// The caller must hold at least read locks on both refSdbf and targetSdbf.
 func sdbfMaxScore(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64 {
 	var maxScore float64 = -1
 	bfSize := refSdbf.bfSize
