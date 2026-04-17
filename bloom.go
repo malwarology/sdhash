@@ -1,6 +1,7 @@
 package sdhash
 
 import (
+	"encoding/binary"
 	"errors"
 	"math/bits"
 )
@@ -73,11 +74,34 @@ func bfInsertSha1(bf []byte, sha1Hash [5]uint32) uint32 {
 	return insertCnt
 }
 
-// andPopcount returns the number of bits set in the AND of two 256-byte bloom filters.
+// andPopcount returns the number of bits set in the AND of two 256-byte bloom
+// filters. The function is the innermost hot loop of the Compare path and is
+// implemented using 64-bit-wide popcount.
+//
+// OPTIMIZATION: The previous implementation iterated 256 times calling
+// bits.OnesCount8, which is a 256-byte lookup table in the Go standard
+// library (see math/bits/bits.go: OnesCount8 returns int(pop8tab[x])).
+// bits.OnesCount64 on amd64 (with POPCNT) and arm64 is a compiler intrinsic
+// that maps to a single hardware population-count instruction. By reading
+// 8 bytes at a time via binary.LittleEndian.Uint64 and calling OnesCount64,
+// we replace 256 table lookups with 32 hardware popcount instructions.
+// The loop is fully unrolled by the compiler since bfSize is constant.
+//
+// Endianness is irrelevant to the result: popcount counts bits regardless
+// of the order in which bytes are packed into the uint64. LittleEndian is
+// used because on both amd64 and arm64 it compiles to a single unaligned
+// load (MOV / LDR) with no byte-reordering, which is the fastest path.
 func andPopcount(bf1, bf2 []byte) uint32 {
-	var count uint32
-	for i := 0; i < 256; i++ {
-		count += uint32(bits.OnesCount8(bf1[i] & bf2[i]))
+	// bfSize is a package-level constant of 256 bytes = 32 uint64 words.
+	// The compiler unrolls the bounds-checked slice accesses because the
+	// loop bound and slice lengths are both effectively constant here.
+	_ = bf1[255] // early bounds check hint: one panic site instead of many
+	_ = bf2[255]
+	var count int
+	for i := 0; i < 256; i += 8 {
+		a := binary.LittleEndian.Uint64(bf1[i:])
+		b := binary.LittleEndian.Uint64(bf2[i:])
+		count += bits.OnesCount64(a & b)
 	}
-	return count
+	return uint32(count)
 }
