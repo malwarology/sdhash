@@ -1,4 +1,4 @@
-//go:build corpus
+//go:build corpus || compat
 
 package sdhash
 
@@ -276,6 +276,39 @@ func genLowEntropy(rng *rand.Rand, size int) []byte {
 				buf[i] = alphabet[rng.IntN(alphabetSize)]
 			}
 		}
+	}
+
+	return buf
+}
+
+// genSubfloorEntropy produces near-zero entropy data by filling a buffer with
+// one dominant byte value and scattering a second byte value at a very low
+// frequency. The minority byte's presence is varied uniformly across
+// 0.001%–0.5% of positions per file, spreading files across the 0–0.1 bit
+// entropy range rather than collapsing them all to zero.
+func genSubfloorEntropy(rng *rand.Rand, size int) []byte {
+	buf := make([]byte, size)
+
+	// Pick two distinct byte values
+	dominant := byte(rng.Uint32())
+	minority := byte(rng.Uint32())
+	for minority == dominant {
+		minority = byte(rng.Uint32())
+	}
+
+	// Fill entirely with the dominant byte
+	for i := range buf {
+		buf[i] = dominant
+	}
+
+	// Scatter the minority byte at a frequency in [0.0001%, 0.05%) — chosen
+	// uniformly per file. This spreads files across the 0–0.006 bit entropy
+	// range, filling the gap below the low_entropy floor.
+	freq := 0.000001 + rng.Float64()*0.000499
+	minorityCount := int(float64(size) * freq)
+	for i := 0; i < minorityCount; i++ {
+		pos := rng.IntN(size)
+		buf[pos] = minority
 	}
 
 	return buf

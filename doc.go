@@ -36,6 +36,21 @@
 // for meaningful comparison. Use FeatureDensity to detect these cases before
 // trusting a score. See the README for threshold guidance.
 //
+// # C++ reference compatibility
+//
+// CompareRef provides a scoring path that reproduces the exact behavior of
+// the C++ sdhash reference implementation, including three intentional
+// divergences from Compare: a staged early-exit heuristic in the
+// AND-popcount calculation, conditional score accumulation semantics, and
+// the single-int return convention with -1 as a degenerate sentinel.
+//
+// CompareRef exists for cross-validation against C++ reference output and
+// for comparing digests originally produced by the C++ implementation.
+// For all new work, prefer Compare which returns (score, ok).
+//
+// CompareRef will be removed in a future major release. See the README
+// for migration guidance.
+//
 // # Concurrency
 //
 // Every method on Sdbf is safe for concurrent use. Each Compute call produces

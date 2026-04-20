@@ -113,6 +113,17 @@ func (sd *sdbf) Compare(other Sdbf) (int, bool) {
 	return result, true
 }
 
+func (sd *sdbf) CompareRef(other Sdbf) int {
+	if other == nil {
+		return -1
+	}
+	o, ok := other.(*sdbf)
+	if !ok {
+		return -1
+	}
+	return sdbfScoreRef(sd, o)
+}
+
 func (sd *sdbf) String() string {
 	var sb strings.Builder
 	isStream := sd.elemCounts == nil

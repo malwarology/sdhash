@@ -67,3 +67,14 @@ jobs:
           go-version: '1.26.x'
           cache: false
       - run: go test -tags corpus -timeout 60m -count=1 ./...
+
+  compat:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - run: go test -tags compat -run TestCompat -timeout 30m -count=1 ./...

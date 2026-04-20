@@ -8,7 +8,27 @@ This work is based on the original Go implementation by [Emiliano Ciavatta](http
 
 ## Correctness
 
-This implementation has been verified correct against the C++ reference implementation using a 103,000-file corpus. All 103,000 files match in both stream mode and DD mode.
+Digest generation has been verified against the C++ reference
+implementation using a 103,000-file corpus. All 103,000 digests match in
+both stream and DD modes.
+
+Scoring has been cross-validated across 2,880,000 pair comparisons
+(1,200 files × 1,200 files, both stream and DD modes) with zero
+unexplained divergences. Four systematic differences between the Go and
+C++ scoring paths were identified, root-caused, and reproduced:
+
+1. **Swap tiebreaker** — when two digests have equal filter counts, the
+   C++ reference breaks the tie using the element count of the last
+   filter. This tiebreaker is implemented in `Compare` and `CompareRef`.
+2. **Staged early-exit** — the C++ AND-popcount uses a staged heuristic
+   that can reject filter pairs early. `Compare` uses exact full
+   popcount; `CompareRef` reproduces the C++ heuristic.
+3. **Rounding** — the C++ reference uses `boost::math::round`
+   (half-away-from-zero). Both `Compare` and `CompareRef` use Go's
+   `math.Round`, which has the same semantics.
+4. **Score accumulation** — the C++ reference uses conditional assignment
+   on the first iteration. `Compare` uses straightforward addition;
+   `CompareRef` reproduces the C++ pattern.
 
 ## Installation
 
@@ -63,6 +83,26 @@ if !ok {
 }
 fmt.Printf("similarity: %d/100\n", score)
 ```
+
+### Comparing with CompareRef (C++ compatibility)
+
+`CompareRef` returns a single integer matching the C++ reference
+implementation's scoring convention: 0–100 for a valid comparison, or -1
+if the comparison is degenerate. Use this method when comparing against
+digests produced by the C++ `sdhash` tool or when exact score parity with
+the C++ implementation is required.
+
+```go
+score := digest1.CompareRef(digest2)
+if score < 0 {
+    fmt.Println("comparison is degenerate")
+    return
+}
+fmt.Printf("similarity: %d/100\n", score)
+```
+
+For all new work, prefer `Compare` which returns `(score, ok)` and does
+not overload the return value.
 
 ### Parsing a digest string
 
@@ -139,6 +179,7 @@ func ParseSdbfFromReader(io.Reader) (Sdbf, error)
 // Sdbf is a computed similarity digest.
 type Sdbf interface {
     Compare(Sdbf) (int, bool)            // similarity score in [0, 100]; false if not comparable
+    CompareRef(Sdbf) int                 // C++ reference-compatible score; -1 if not comparable
     String() string                      // wire-format encoding
     Size() uint64                        // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
@@ -271,6 +312,39 @@ fmt.Printf("similarity: %d/100\n", score)
 
 This three-step pattern — crypto hash for identity, sdhash for similarity, density check for validity — covers the full range of inputs reliably, including the low-entropy and small-file cases where sdhash alone can produce misleading results.
 
+## C++ reference compatibility
+
+This implementation has been cross-validated against the C++ sdhash
+reference implementation across 2,880,000 pair comparisons (1,200 files ×
+1,200 files, both stream and DD modes) with zero unexplained divergences.
+
+The standard `Compare` method improves on the C++ scoring in two ways:
+
+1. **Full popcount.** The C++ implementation uses a staged early-exit
+   heuristic (`bf_bitcount_cut_256` with `slack=48`) that can reject
+   filter pairs before computing their full AND-popcount. This was a
+   performance optimization for the lookup-table-based popcount used in
+   the original code. On modern hardware with native POPCNT instructions,
+   the full computation is both faster (no branch mispredictions, no
+   redundant second pass) and more accurate.
+
+2. **Clean accumulation.** The C++ implementation initializes `score_sum`
+   to -1 and uses conditional assignment on the first iteration, which
+   causes a non-negative result to reset any previously accumulated
+   negative. `Compare` uses straightforward addition, which is simpler
+   and does not mask degenerate filter results.
+
+`CompareRef` reproduces the exact C++ behavior for both of these, plus
+the single-int return convention with -1 as a sentinel. Use it when you
+need exact score parity with the C++ tool or when working with digests
+originally produced by the C++ implementation.
+
+### Deprecation plan
+
+`CompareRef` and its underlying scoring functions will be removed in the
+next release. If you need C++ reference-compatible scoring after that
+point, pin your dependency to this release.
+
 ## Concurrency
 
 Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `String`, `Size`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
@@ -295,3 +369,25 @@ go test -count=1 -coverprofile=coverage.out ./... && go tool cover -html=coverag
 ```
 
 The test suite achieves 100% statement coverage. It includes regression tests for known issues verified against the C++ reference implementation output.
+
+### Corpus validation
+
+The hash corpus test validates digest generation against reference CSVs
+covering 103,000 files:
+
+```bash
+go test -tags corpus -timeout 60m -count=1 ./...
+```
+
+### C++ compatibility validation
+
+The compat test validates `CompareRef` against C++ reference scoring
+across 2,880,000 pair comparisons:
+
+```bash
+go test -tags compat -run TestCompat -timeout 30m -count=1 ./...
+```
+
+Both corpus tests are run on push to main in CI. They are not included
+in the default test suite because they require large reference datasets
+and take several minutes to complete.
