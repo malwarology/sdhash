@@ -57,7 +57,7 @@ func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 		return -1
 	}
 
-	return int(math.Round(100.0 * scoreSum / float64(denominator)))
+	return int(100.0 * scoreSum / float64(denominator))
 }
 
 // sdbfMaxScore calculates the maximum match of a single reference filter against all target filters.

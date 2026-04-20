@@ -79,9 +79,13 @@ import (
 // ├── 00260000  Stream mode degenerate pair returns score 0 and ok false
 // └── 00270000  DD mode degenerate pair returns score 0 and ok false
 //
+// Issue 46 — Compare score rounding diverges from C++ reference
+//    https://github.com/malwarology/sdhash/issues/46
+// └── 00280000  Compare score matches C++ reference on known-diverging pair
+//
 // Issue 47 — Compare swap condition missing tiebreaker when bfCount is equal
 //    https://github.com/malwarology/sdhash/issues/47
-// └── 00280000  Swap tiebreaker with equal bfCount
+// └── 00290000  Swap tiebreaker with equal bfCount
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -257,13 +261,15 @@ func TestIssue2_DegenerateStreamDigests(t *testing.T) {
 	checkAtMost(t, sdB.FeatureDensity(), 0.02,
 		"issue2b stream density must be below 0.02")
 
-	// The stream comparison produces a false positive of 100.
-	// This documents the known failure mode; FeatureDensity is how
-	// callers detect it.
+	// Stream mode produces a near-perfect false positive for these
+	// degenerate digests: FeatureDensity, not Compare score, is how
+	// callers should detect this. The score was 100 under math.Round;
+	// it is 99 under truncation. Either value documents the same known
+	// failure mode.
 	score, ok := sdA.Compare(sdB)
 	checkTrue(t, ok, "issue2 stream comparison must be comparable")
-	checkEqual(t, 100, score,
-		"issue2 stream comparison produces a false positive of 100")
+	checkEqual(t, 99, score,
+		"issue2 stream comparison produces a near-perfect false positive of 99")
 }
 
 // ---------------------------------------------------------------------------
@@ -823,12 +829,49 @@ func TestIssue43_DDDegeneratePairScore(t *testing.T) {
 }
 
 // =========================================================================
+// Issue 46 — Compare score rounding diverges from C++ reference
+// https://github.com/malwarology/sdhash/issues/46
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00280000  Compare score matches C++ reference on known-diverging pair
+// ---------------------------------------------------------------------------
+
+// TestIssue46_CompareScoreRounding pins Compare's output on a known-diverging
+// lab-rat pair surfaced during cross-validation against the C++ reference on
+// a 1200-file corpus (1.44M pairs). Pre-fix, sdbfScore silently preferred
+// whichever digest was passed first whenever both had equal bfCount, making
+// Compare non-commutative on equal-bfCount pairs and producing Go score 4
+// against C++ reference score 3 for this pair.
+//
+// The fix added a tiebreaker to sdbfScore's swap: when bfCount is equal, the
+// digest with the larger last-filter element count becomes the target. The
+// compat test suite verifies the fix across all 1.44M pairs; this test is
+// the lightweight default-enabled pin for the specific pair that originally
+// surfaced the divergence.
+func TestIssue46_CompareScoreRounding(t *testing.T) {
+	t.Parallel()
+
+	dataA := decryptTestFile(t, "testdata/issue46a.bin.enc")
+	dataB := decryptTestFile(t, "testdata/issue46b.bin.enc")
+
+	sdA := streamDigest(t, dataA)
+	sdB := streamDigest(t, dataB)
+
+	score, ok := sdA.Compare(sdB)
+	checkTrue(t, ok,
+		"Compare must return ok=true for this pair (regression: issue #46)")
+	checkEqual(t, 3, score,
+		"Compare must return C++ reference score of 3 (regression: issue #46)")
+}
+
+// =========================================================================
 // Issue 47 — Compare swap condition missing tiebreaker when bfCount is equal
 // https://github.com/malwarology/sdhash/issues/47
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00280000  Swap tiebreaker with equal bfCount
+// 00290000  Swap tiebreaker with equal bfCount
 // ---------------------------------------------------------------------------
 
 // TestIssue47_SwapTiebreaker verifies that two digests with equal bfCount
