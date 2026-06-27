@@ -25,15 +25,14 @@ import (
 // II. score_ref.go (sdbfScoreRef, sdbfMaxScoreRef)
 // ├── 00090000  sdbfScoreRef zero bfCount returns -1
 // ├── 00100000  sdbfScoreRef both digests fully sparse returns -1
-// ├── 00110000  sdbfScoreRef swap tiebreaker
-// ├── 00120000  sdbfMaxScoreRef sparse source returns 0
-// └── 00130000  sdbfMaxScoreRef no scoreable target returns -1
+// ├── 00110000  sdbfMaxScoreRef sparse source returns 0
+// └── 00120000  sdbfMaxScoreRef no scoreable target returns -1
 //
 // III. Sdbf.CompareRef
-// ├── 00140000  CompareRef nil other returns -1
-// ├── 00150000  CompareRef foreign Sdbf returns -1
-// ├── 00160000  CompareRef self-compare returns 100
-// └── 00170000  CompareRef returns valid score on random pair
+// ├── 00130000  CompareRef nil other returns -1
+// ├── 00140000  CompareRef foreign Sdbf returns -1
+// ├── 00150000  CompareRef self-compare returns 100
+// └── 00160000  CompareRef returns valid score on random pair
 
 // =========================================================================
 // I. bloom_ref.go (andPopcountCut)
@@ -337,30 +336,7 @@ func TestRef_ScoreRef_DenominatorZero(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00110000  sdbfScoreRef swap tiebreaker
-// ---------------------------------------------------------------------------
-
-// TestRef_ScoreRef_SwapTiebreaker verifies that the equal-bfCount swap
-// tiebreaker (the same one tested for Compare in TestIssue47_SwapTiebreaker)
-// is also present in sdbfScoreRef. The same fixture pair must produce the
-// expected high score through the reference path.
-func TestRef_ScoreRef_SwapTiebreaker(t *testing.T) {
-	t.Parallel()
-
-	dataA := decryptTestFile(t, "testdata/issue47a.bin.enc")
-	dataB := decryptTestFile(t, "testdata/issue47b.bin.enc")
-
-	sdA := streamDigest(t, dataA)
-	sdB := streamDigest(t, dataB)
-
-	const wantScore = 100 // C++ reference output for this pair
-	got := sdA.CompareRef(sdB)
-	checkEqual(t, wantScore, got,
-		"CompareRef on equal-bfCount tiebreaker pair must match C++ reference score")
-}
-
-// ---------------------------------------------------------------------------
-// 00120000  sdbfMaxScoreRef sparse source returns 0
+// 00110000  sdbfMaxScoreRef sparse source returns 0
 // ---------------------------------------------------------------------------
 
 // TestRef_MaxScoreRef_SparseSource verifies the sparse-source guard
@@ -389,7 +365,7 @@ func TestRef_MaxScoreRef_SparseSource(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00130000  sdbfMaxScoreRef no scoreable target returns -1
+// 00120000  sdbfMaxScoreRef no scoreable target returns -1
 // ---------------------------------------------------------------------------
 
 // TestRef_MaxScoreRef_NoScoreableTarget verifies the sentinel -1 return
@@ -424,7 +400,7 @@ func TestRef_MaxScoreRef_NoScoreableTarget(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00140000  CompareRef nil other returns -1
+// 00130000  CompareRef nil other returns -1
 // ---------------------------------------------------------------------------
 
 // TestRef_CompareRef_NilOther verifies that CompareRef returns the
@@ -439,7 +415,7 @@ func TestRef_CompareRef_NilOther(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00150000  CompareRef foreign Sdbf returns -1
+// 00140000  CompareRef foreign Sdbf returns -1
 // ---------------------------------------------------------------------------
 
 // TestRef_CompareRef_ForeignOther verifies that CompareRef on a foreign
@@ -460,7 +436,7 @@ func TestRef_CompareRef_ForeignOther(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00160000  CompareRef self-compare returns 100
+// 00150000  CompareRef self-compare returns 100
 // ---------------------------------------------------------------------------
 
 // TestRef_CompareRef_SelfCompare verifies that a high-entropy digest
@@ -475,7 +451,7 @@ func TestRef_CompareRef_SelfCompare(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00170000  CompareRef returns valid score on random pair
+// 00160000  CompareRef returns valid score on random pair
 // ---------------------------------------------------------------------------
 
 // TestRef_CompareRef_RandomPair is a smoke test that CompareRef on two

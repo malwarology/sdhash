@@ -14,16 +14,13 @@ both stream and DD modes.
 
 Scoring has been cross-validated across 2,880,000 pair comparisons
 (1,200 files × 1,200 files, both stream and DD modes) with zero
-unexplained divergences. Three systematic differences between the Go and
+unexplained divergences. Two systematic differences between the Go and
 C++ scoring paths were identified, root-caused, and reproduced:
 
-1. **Swap tiebreaker** — when two digests have equal filter counts, the
-   C++ reference breaks the tie using the element count of the last
-   filter. This tiebreaker is implemented in `Compare` and `CompareRef`.
-2. **Staged early-exit** — the C++ AND-popcount uses a staged heuristic
+1. **Staged early-exit** — the C++ AND-popcount uses a staged heuristic
    that can reject filter pairs early. `Compare` uses exact full
    popcount; `CompareRef` reproduces the C++ heuristic.
-3. **Score accumulation** — the C++ reference uses conditional assignment
+2. **Score accumulation** — the C++ reference uses conditional assignment
    on the first iteration. `Compare` uses straightforward addition;
    `CompareRef` reproduces the C++ pattern.
 

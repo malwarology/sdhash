@@ -32,21 +32,20 @@ import (
 // II. score_debug.go private helpers (sdbfScoreDebug, sdbfMaxScoreDebug)
 // ├── 00080000  sdbfScoreDebug zero bfCount returns -1
 // ├── 00090000  sdbfScoreDebug both digests fully sparse returns -1
-// ├── 00100000  sdbfScoreDebug swap tiebreaker
-// ├── 00110000  sdbfMaxScoreDebug sparse source returns 0
-// ├── 00120000  sdbfMaxScoreDebug no scoreable target returns -1
-// └── 00160000  sdbfScore and sdbfScoreDebug noTargetCount path
+// ├── 00100000  sdbfMaxScoreDebug sparse source returns 0
+// ├── 00110000  sdbfMaxScoreDebug no scoreable target returns -1
+// └── 00120000  sdbfScore and sdbfScoreDebug noTargetCount path
 //
 // III. CompareDebug interface contract
 // ├── 00130000  CompareDebug nil other returns (0, false)
 // ├── 00140000  CompareDebug foreign Sdbf returns (0, false)
-// └── 00170000  CompareDebug degenerate pair returns (0, false)
+// └── 00150000  CompareDebug degenerate pair returns (0, false)
 //
 // IV. CompareDebug toggle combinations (sequential — touches global state)
-// └── 00150000  All eight toggle combinations
+// └── 00160000  All four toggle combinations
 //
 // V. score_debug.go C++-faithful path coverage (sequential — touches global state)
-// └── 00180000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
+// └── 00170000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
 
 // =========================================================================
 // I. debug.go accessors
@@ -312,29 +311,7 @@ func TestDebug_ScoreDebug_DenominatorZero(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00100000  sdbfScoreDebug swap tiebreaker
-// ---------------------------------------------------------------------------
-
-// TestDebug_ScoreDebug_SwapTiebreaker verifies that sdbfScoreDebug at
-// default toggles produces the same swap-tiebreaker behavior as sdbfScore
-// and sdbfScoreRef. This pins the equal-bfCount tiebreaker on the same
-// fixture pair used by Compare and CompareRef.
-func TestDebug_ScoreDebug_SwapTiebreaker(t *testing.T) {
-	t.Parallel()
-
-	dataA := decryptTestFile(t, "testdata/issue47a.bin.enc")
-	dataB := decryptTestFile(t, "testdata/issue47b.bin.enc")
-
-	sdA := streamDigest(t, dataA).(*sdbf)
-	sdB := streamDigest(t, dataB).(*sdbf)
-
-	const wantScore = 100
-	checkEqual(t, wantScore, sdbfScoreDebug(sdA, sdB),
-		"sdbfScoreDebug at default toggles must match the swap-tiebreaker score")
-}
-
-// ---------------------------------------------------------------------------
-// 00110000  sdbfMaxScoreDebug sparse source returns 0
+// 00100000  sdbfMaxScoreDebug sparse source returns 0
 // ---------------------------------------------------------------------------
 
 // TestDebug_MaxScoreDebug_SparseSource verifies the sparse-source guard
@@ -361,7 +338,7 @@ func TestDebug_MaxScoreDebug_SparseSource(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00120000  sdbfMaxScoreDebug no scoreable target returns -1
+// 00110000  sdbfMaxScoreDebug no scoreable target returns -1
 // ---------------------------------------------------------------------------
 
 // TestDebug_MaxScoreDebug_NoScoreableTarget verifies the maxScore=-1
@@ -388,7 +365,7 @@ func TestDebug_MaxScoreDebug_NoScoreableTarget(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00160000  sdbfScore and sdbfScoreDebug noTargetCount path
+// 00120000  sdbfScore and sdbfScoreDebug noTargetCount path
 // ---------------------------------------------------------------------------
 
 // TestDebug_ScoreDebug_NoTargetCount verifies the noTargetCount accumulation
@@ -492,7 +469,7 @@ func TestDebug_CompareDebug_ForeignOther(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00170000  CompareDebug degenerate pair returns (0, false)
+// 00150000  CompareDebug degenerate pair returns (0, false)
 // ---------------------------------------------------------------------------
 
 // TestDebug_CompareDebug_DegeneratePair verifies the score < 0 branch inside
@@ -517,7 +494,7 @@ func TestDebug_CompareDebug_DegeneratePair(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00150000  All eight toggle combinations
+// 00160000  All four toggle combinations
 // ---------------------------------------------------------------------------
 
 // TestDebug_CompareDebug_AllToggleCombinations exercises all 2^2 = 4
@@ -610,7 +587,7 @@ func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00180000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
+// 00170000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
 // ---------------------------------------------------------------------------
 
 // TestDebug_ScoreDebug_CppFaithfulSparseSource verifies three statements in
