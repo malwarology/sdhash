@@ -520,53 +520,44 @@ func TestDebug_CompareDebug_DegeneratePair(t *testing.T) {
 // 00150000  All eight toggle combinations
 // ---------------------------------------------------------------------------
 
-// TestDebug_CompareDebug_AllToggleCombinations exercises all 2^3 = 8
-// combinations of the three Debug* toggle vars and verifies the well-
+// TestDebug_CompareDebug_AllToggleCombinations exercises all 2^2 = 4
+// combinations of the two Debug* toggle vars and verifies the well-
 // formedness of CompareDebug's output in each. Two combinations carry
 // strong equivalence assertions:
 //
 //   - all-off (defaults): CompareDebug must equal Compare exactly.
-//   - {Acc=true, Pop=true, Round=false}: CompareDebug must equal CompareRef
+//   - {Acc=true, Pop=true}: CompareDebug must equal CompareRef
 //     (modulo the (int, bool) vs int-with-sentinel return shape). This is
-//     the combo that exactly reproduces sdbfScoreRef — note that "all on"
-//     does NOT match CompareRef because DebugRemoveRounding=true causes
-//     CompareDebug to truncate while sdbfScoreRef rounds.
+//     the combo that exactly reproduces sdbfScoreRef.
 //
-// The other six combinations are smoke-tested: result is well-formed
+// The other two combinations are smoke-tested: result is well-formed
 // (score in [0, 100] when ok, score=0 when !ok) and the call doesn't
 // panic. The corpus tests under the compat tag pin the wider behavior;
 // this test pins the unit-level contract of each toggle combination.
 //
 // This test does NOT call t.Parallel anywhere because the toggles are
-// global state. Each subtest registers a t.Cleanup that resets all three
+// global state. Each subtest registers a t.Cleanup that resets both
 // toggles to false, so a panic mid-subtest cannot leak state.
 func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 	a := streamDigest(t, randomBuf(1<<20, 11, 11))
 	b := streamDigest(t, randomBuf(1<<20, 12, 12))
 
 	cases := []struct {
-		name  string
-		round bool
-		acc   bool
-		pop   bool
+		name string
+		acc  bool
+		pop  bool
 	}{
-		{"all-off", false, false, false},
-		{"round-only", true, false, false},
-		{"acc-only", false, true, false},
-		{"pop-only", false, false, true},
-		{"round+acc", true, true, false},
-		{"round+pop", true, false, true},
-		{"acc+pop", false, true, true},
-		{"all-on", true, true, true},
+		{"all-off", false, false},
+		{"acc-only", true, false},
+		{"pop-only", false, true},
+		{"acc+pop", true, true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			DebugRemoveRounding = tc.round
 			DebugRevertAdditiveAccumulation = tc.acc
 			DebugRevertExactPopcount = tc.pop
 			t.Cleanup(func() {
-				DebugRemoveRounding = false
 				DebugRevertAdditiveAccumulation = false
 				DebugRevertExactPopcount = false
 			})
@@ -586,7 +577,7 @@ func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 
 			// Equivalence assertions for the two anchor combinations.
 			switch {
-			case !tc.round && !tc.acc && !tc.pop:
+			case !tc.acc && !tc.pop:
 				// all-off: CompareDebug must exactly equal Compare.
 				wantScore, wantOk := a.Compare(b)
 				checkEqual(t, wantScore, score,
@@ -594,8 +585,8 @@ func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 				checkEqual(t, wantOk, ok,
 					"all-off CompareDebug ok must equal Compare ok")
 
-			case !tc.round && tc.acc && tc.pop:
-				// {Acc=true, Pop=true, Round=false}: CompareDebug must equal
+			case tc.acc && tc.pop:
+				// {Acc=true, Pop=true}: CompareDebug must equal
 				// CompareRef modulo return shape.
 				refScore := a.CompareRef(b)
 				if refScore < 0 {
@@ -642,7 +633,6 @@ func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 func TestDebug_ScoreDebug_CppFaithfulSparseSource(t *testing.T) {
 	DebugRevertAdditiveAccumulation = true
 	t.Cleanup(func() {
-		DebugRemoveRounding = false
 		DebugRevertAdditiveAccumulation = false
 		DebugRevertExactPopcount = false
 	})

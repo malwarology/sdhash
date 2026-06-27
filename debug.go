@@ -10,15 +10,6 @@
 
 package sdhash
 
-// DebugRemoveRounding, when true, causes CompareDebug to truncate its
-// final score instead of rounding. Rounding is the correct behavior
-// (matching both the modern Compare path and the C++ reference);
-// removing it exposes the systemic downward bias that truncation
-// produces. Used for demonstrations.
-//
-// Default: false.
-var DebugRemoveRounding bool
-
 // DebugRevertAdditiveAccumulation, when true, causes CompareDebug to
 // use the C++-faithful conditional-first-assignment accumulation
 // pattern instead of the modern additive accumulation from zero.

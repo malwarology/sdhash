@@ -61,9 +61,6 @@ func sdbfScoreDebug(sdbf1 *sdbf, sdbf2 *sdbf) int {
 			return -1
 		}
 
-		if DebugRemoveRounding {
-			return int(100.0 * scoreSum / float64(denominator))
-		}
 		return int(math.Round(100.0 * scoreSum / float64(denominator)))
 	}
 
@@ -90,9 +87,6 @@ func sdbfScoreDebug(sdbf1 *sdbf, sdbf2 *sdbf) int {
 		return -1
 	}
 
-	if DebugRemoveRounding {
-		return int(100.0 * scoreSum / float64(denominator))
-	}
 	return int(math.Round(100.0 * scoreSum / float64(denominator)))
 }
 
@@ -144,13 +138,10 @@ func sdbfMaxScoreDebug(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64
 }
 
 // CompareDebug performs a pairwise comparison using a toggle-gated
-// variant of the modern Compare algorithm. When all three toggles are
+// variant of the modern Compare algorithm. When both toggles are
 // at their default false values, CompareDebug produces output
 // identical to Compare. Individual toggles revert specific fixes:
 //
-//   - DebugRemoveRounding: when true, replaces math.Round with
-//     truncation at the final score conversion. Exposes the
-//     systemic downward bias truncation produces.
 //   - DebugRevertAdditiveAccumulation: when true, reverts to the
 //     C++ conditional-first-assignment accumulation pattern.
 //   - DebugRevertExactPopcount: when true, reverts to the C++

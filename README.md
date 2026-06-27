@@ -14,7 +14,7 @@ both stream and DD modes.
 
 Scoring has been cross-validated across 2,880,000 pair comparisons
 (1,200 files × 1,200 files, both stream and DD modes) with zero
-unexplained divergences. Four systematic differences between the Go and
+unexplained divergences. Three systematic differences between the Go and
 C++ scoring paths were identified, root-caused, and reproduced:
 
 1. **Swap tiebreaker** — when two digests have equal filter counts, the
@@ -23,10 +23,7 @@ C++ scoring paths were identified, root-caused, and reproduced:
 2. **Staged early-exit** — the C++ AND-popcount uses a staged heuristic
    that can reject filter pairs early. `Compare` uses exact full
    popcount; `CompareRef` reproduces the C++ heuristic.
-3. **Rounding** — the C++ reference uses `boost::math::round`
-   (half-away-from-zero). Both `Compare` and `CompareRef` use Go's
-   `math.Round`, which has the same semantics.
-4. **Score accumulation** — the C++ reference uses conditional assignment
+3. **Score accumulation** — the C++ reference uses conditional assignment
    on the first iteration. `Compare` uses straightforward addition;
    `CompareRef` reproduces the C++ pattern.
 
