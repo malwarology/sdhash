@@ -3570,7 +3570,7 @@ func streamDigestPayload(sd Sdbf) []string {
 	hash := strings.TrimRight(sd.String(), "\r\n")
 	inputSize := sd.InputSize()
 	filterCount := sd.FilterCount()
-	filterSize := sd.Size()
+	filterSize := sd.FilterSize()
 	density := sd.FeatureDensity()
 	lastCount := LastCount(sd)
 	totalElements := TotalElements(sd)
@@ -3630,7 +3630,7 @@ func ddDigestPayload(sd Sdbf) []string {
 	hash := strings.TrimRight(sd.String(), "\r\n")
 	inputSize := sd.InputSize()
 	filterCount := sd.FilterCount()
-	filterSize := sd.Size()
+	filterSize := sd.FilterSize()
 	density := sd.FeatureDensity()
 	totalElements := TotalElements(sd)
 

@@ -71,7 +71,7 @@ func FuzzParseSdbfFromString(f *testing.F) {
 		}
 		// If parsing succeeded, exercise every method to ensure none panic.
 		_ = sd.String()
-		_ = sd.Size()
+		_ = sd.FilterSize()
 		_ = sd.InputSize()
 		_ = sd.FilterCount()
 		_ = sd.FeatureDensity()
@@ -101,7 +101,7 @@ func FuzzCompute(f *testing.F) {
 			return
 		}
 		_ = sd.String()
-		_ = sd.Size()
+		_ = sd.FilterSize()
 		_ = sd.InputSize()
 		_ = sd.FilterCount()
 		_ = sd.FeatureDensity()

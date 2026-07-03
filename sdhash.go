@@ -20,8 +20,8 @@ import (
 // after the factory returns.
 type Sdbf interface {
 
-	// Size returns the total byte size of the bloom filter data within this Sdbf.
-	Size() uint64
+	// FilterSize returns the total byte size of the bloom filter data within this Sdbf.
+	FilterSize() uint64
 
 	// InputSize returns the size of the original data this Sdbf was generated from.
 	InputSize() uint64
@@ -82,7 +82,7 @@ type sdbf struct {
 	entropyWinSize int
 }
 
-func (sd *sdbf) Size() uint64 {
+func (sd *sdbf) FilterSize() uint64 {
 	return uint64(sd.bfSize) * uint64(sd.bfCount)
 }
 

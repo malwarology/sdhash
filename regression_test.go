@@ -578,7 +578,7 @@ func TestIssue17_CompareNilSdbf(t *testing.T) {
 // handle it gracefully rather than panicking.
 type foreignSdbfImpl struct{}
 
-func (f *foreignSdbfImpl) Size() uint64             { return 0 }
+func (f *foreignSdbfImpl) FilterSize() uint64       { return 0 }
 func (f *foreignSdbfImpl) InputSize() uint64        { return 0 }
 func (f *foreignSdbfImpl) FilterCount() uint32      { return 0 }
 func (f *foreignSdbfImpl) Compare(Sdbf) (int, bool) { return 0, false }

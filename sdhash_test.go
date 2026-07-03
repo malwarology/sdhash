@@ -101,7 +101,7 @@ func TestStreamMode_BasicProperties(t *testing.T) {
 	checkNotNil(t, sd, "stream digest must not be nil")
 	checkEqual(t, uint64(size), sd.InputSize(), "InputSize should match buffer length")
 	checkGreater(t, sd.FilterCount(), uint32(0), "FilterCount should be > 0")
-	checkEqual(t, uint64(sd.FilterCount())*256, sd.Size(), "Size should equal FilterCount * 256")
+	checkEqual(t, uint64(sd.FilterCount())*256, sd.FilterSize(), "FilterSize should equal FilterCount * 256")
 	checkTrue(t, strings.HasPrefix(sd.String(), "sdbf:03:1:-:"), "String should start with stream prefix")
 	checkTrue(t, strings.HasSuffix(sd.String(), "\n"), "String should end with newline")
 }

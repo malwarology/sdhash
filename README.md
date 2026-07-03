@@ -122,7 +122,7 @@ for {
     if err != nil {
         break
     }
-    fmt.Println(digest.Size())
+    fmt.Println(digest.FilterSize())
 }
 ```
 
@@ -175,7 +175,7 @@ type Sdbf interface {
     Compare(Sdbf) (int, bool)            // similarity score in [0, 100]; false if not comparable
     CompareRef(Sdbf) int                 // C++ reference-compatible score; -1 if not comparable
     String() string                      // wire-format encoding
-    Size() uint64                        // total bloom filter data size in bytes
+    FilterSize() uint64                  // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
     FilterCount() uint32                 // number of bloom filters
     FeatureDensity() float64             // total features / input size
@@ -341,7 +341,7 @@ point, pin your dependency to this release.
 
 ## Concurrency
 
-Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `String`, `Size`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
+Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `String`, `FilterSize`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
 
 Each `New` call followed by `Compute` produces an independent `Sdbf` instance with no shared state. Computing many digests concurrently across different inputs is safe and is the primary pattern the library is designed for.
 
