@@ -88,7 +88,7 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: false
-      - run: go test -tags corpushash -run TestCorpusHash -count=1 -timeout=0 ./...
+      - run: go test -tags corpushash -run TestCorpusHash -count=1 -timeout=0 -v ./...
 
   corpuscompare:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -99,4 +99,4 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: false
-      - run: go test -tags corpuscompare -run TestCorpusCompare -count=1 -timeout=0 ./...
+      - run: go test -tags corpuscompare -run TestCorpusCompare -count=1 -timeout=0 -v ./...
