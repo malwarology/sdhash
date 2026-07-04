@@ -287,9 +287,13 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) error {
 
 	// Single-chunk fast path: skip parallel overhead entirely.
 	if totalChunks <= 1 {
-		chunkRanks := getChunkSlice(int(chunkSize))
+		// Size scratch slices to the actual data, not the 32 MiB chunk cap.
+		// For a single chunk the used length is exactly fileSize, so clearing
+		// a full chunk-sized slice wastes work proportional to the gap.
+		effSize := int(fileSize)
+		chunkRanks := getChunkSlice(effSize)
 		defer putChunkSlice(chunkRanks)
-		chunkScores := getChunkSlice(int(chunkSize))
+		chunkScores := getChunkSlice(effSize)
 		defer putChunkSlice(chunkScores)
 
 		if qt == 1 {
