@@ -7,6 +7,7 @@
 package sdhash
 
 import (
+	"encoding/base64"
 	"testing"
 )
 
@@ -317,11 +318,8 @@ func TestRef_ScoreRef_ZeroBfCount(t *testing.T) {
 func TestRef_ScoreRef_DenominatorZero(t *testing.T) {
 	t.Parallel()
 
-	b64 := func() string {
-		// 256 zero bytes encoded once; reused for both filters.
-		// base64.StdEncoding.EncodedLen(256) == 344: 85 full groups (340 chars) + 1-byte remainder ("AA==").
-		return "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
-	}()
+	// 256 zero bytes: one empty bloom filter, reused for both filters.
+	b64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
 
 	ddStr := "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:00:" +
 		b64 + ":00:" + b64 + "\n"
@@ -406,6 +404,8 @@ func TestRef_MaxScoreRef_NoScoreableTarget(t *testing.T) {
 // TestRef_CompareRef_NilOther verifies that CompareRef returns the
 // degenerate sentinel -1 (rather than panicking) when the other argument
 // is the nil Sdbf interface value.
+//
+//goland:noinspection GoDeprecation
 func TestRef_CompareRef_NilOther(t *testing.T) {
 	t.Parallel()
 
@@ -422,6 +422,8 @@ func TestRef_CompareRef_NilOther(t *testing.T) {
 // Sdbf implementation (one that satisfies the interface but is not the
 // internal *sdbf type) returns -1 rather than panicking on the type
 // assertion. Mirrors TestIssue17_CompareForeignImpl for the modern Compare.
+//
+//goland:noinspection GoDeprecation
 func TestRef_CompareRef_ForeignOther(t *testing.T) {
 	t.Parallel()
 
@@ -442,6 +444,8 @@ func TestRef_CompareRef_ForeignOther(t *testing.T) {
 // TestRef_CompareRef_SelfCompare verifies that a high-entropy digest
 // compared with itself through the reference path returns 100. This is
 // the most basic correctness check on the reference scoring pipeline.
+//
+//goland:noinspection GoDeprecation
 func TestRef_CompareRef_SelfCompare(t *testing.T) {
 	t.Parallel()
 
@@ -457,6 +461,8 @@ func TestRef_CompareRef_SelfCompare(t *testing.T) {
 // TestRef_CompareRef_RandomPair is a smoke test that CompareRef on two
 // independent high-entropy buffers returns an integer in [0, 100] (or -1
 // for a degenerate comparison) without panicking.
+//
+//goland:noinspection GoDeprecation
 func TestRef_CompareRef_RandomPair(t *testing.T) {
 	t.Parallel()
 

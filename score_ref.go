@@ -25,6 +25,7 @@ const shortCircuitSlack = 48
 //
 // C++ denominator-zero: when denominator is 0, score_sum is set to -1
 // (not decremented), matching the C++ assignment.
+//
 //goland:noinspection DuplicatedCode
 func sdbfScoreRef(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount

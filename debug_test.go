@@ -14,6 +14,7 @@
 package sdhash
 
 import (
+	"encoding/base64"
 	"math/bits"
 	"testing"
 )
@@ -297,7 +298,7 @@ func TestDebug_ScoreDebug_DenominatorZero(t *testing.T) {
 	t.Parallel()
 
 	// base64.StdEncoding.EncodedLen(256) == 344: 85 full groups (340 chars) + 1-byte remainder ("AA==").
-	b64 := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+	b64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
 
 	ddStr := "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:00:" +
 		b64 + ":00:" + b64 + "\n"
@@ -565,6 +566,7 @@ func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 			case tc.acc && tc.pop:
 				// {Acc=true, Pop=true}: CompareDebug must equal
 				// CompareRef modulo return shape.
+				//goland:noinspection GoDeprecation
 				refScore := a.CompareRef(b)
 				if refScore < 0 {
 					checkTrue(t, !ok,
@@ -614,7 +616,7 @@ func TestDebug_ScoreDebug_CppFaithfulSparseSource(t *testing.T) {
 		DebugRevertExactPopcount = false
 	})
 
-	b64 := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+	b64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
 	ddStr := "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:00:" +
 		b64 + ":00:" + b64 + "\n"
 

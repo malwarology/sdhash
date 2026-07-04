@@ -185,6 +185,7 @@ func benchScore(b *testing.B, mode string, block int, ref bool) {
 			for n := 0; n < b.N; n++ {
 				p := pairs[n%len(pairs)]
 				if ref {
+					//goland:noinspection GoDeprecation
 					all[p[0]].CompareRef(all[p[1]])
 				} else {
 					all[p[0]].Compare(all[p[1]])

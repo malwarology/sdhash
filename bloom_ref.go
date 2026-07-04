@@ -5,6 +5,7 @@
 // at 1.0.0 when C++ reference compatibility is dropped.
 //
 // Modifications to this file warrant extra review.
+
 package sdhash
 
 import (

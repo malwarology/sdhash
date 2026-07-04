@@ -10,19 +10,18 @@
 
 package sdhash
 
-// DebugRevertAdditiveAccumulation, when true, causes CompareDebug to
-// use the C++-faithful conditional-first-assignment accumulation
-// pattern instead of the modern additive accumulation from zero.
+// DebugRevertAdditiveAccumulation makes CompareDebug use the C++-faithful
+// conditional-first-assignment accumulation pattern instead of the modern
+// additive accumulation from zero when true.
 // Additive accumulation is the correct algorithm; the C++ pattern
 // was a defect. Used for demonstrations.
 //
 // Default: false.
 var DebugRevertAdditiveAccumulation bool
 
-// DebugRevertExactPopcount, when true, causes CompareDebug to use
-// the C++-faithful staged early-exit popcount heuristic
-// (andPopcountCut screening before exact andPopcount) instead of
-// the modern exact popcount directly. Exact popcount is the correct
+// DebugRevertExactPopcount makes CompareDebug use the C++-faithful staged
+// early-exit popcount heuristic (andPopcountCut screening before exact
+// andPopcount) instead of the modern exact popcount directly when true. Exact popcount is the correct
 // algorithm; the C++ heuristic traded correctness for performance.
 // Used for demonstrations.
 //

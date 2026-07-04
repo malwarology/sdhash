@@ -19,6 +19,7 @@ import (
 // using a toggle-gated variant of the modern sdbfScore algorithm. With all
 // toggles at their default false values, it produces output identical to
 // sdbfScore. Individual toggles revert specific fixes.
+//
 //goland:noinspection DuplicatedCode
 func sdbfScoreDebug(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount

@@ -218,11 +218,11 @@ The block size controls the granularity of similarity detection. The rule is: **
 
 **Practical ranges for PE malware analysis:**
 
-| Block size | Use case |
-|---|---|
-| 4096 – 16384 | Shared functions or small code regions |
-| 65536 – 262144 | Shared sections, overlays, or packed regions |
-| 1048576+ | High-level structural similarity across large files |
+| Block size     | Use case                                            |
+|----------------|-----------------------------------------------------|
+| 4096 – 16384   | Shared functions or small code regions              |
+| 65536 – 262144 | Shared sections, overlays, or packed regions        |
+| 1048576+       | High-level structural similarity across large files |
 
 A block size of 65536 (64 KiB) is a reasonable starting point for general PE analysis. Smaller values give finer detection but produce more filters, larger digests, and slower comparisons. Larger values are coarser but faster.
 
@@ -257,11 +257,11 @@ if density < threshold {
 
 The library exposes the metric but does not enforce a threshold. The correct threshold depends on the corpus. Rough guidance for PE malware analysis:
 
-| Density | Interpretation |
-|---|---|
-| > 0.10 | Normal. The digest has enough features for reliable comparison. |
-| 0.02 – 0.10 | Marginal. The digest may be usable but scores should be treated with lower confidence. |
-| < 0.02 | Degenerate. The digest almost certainly does not contain enough information. Scores from this digest — including self-comparison — are unreliable. |
+| Density     | Interpretation                                                                                                                                     |
+|-------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| > 0.10      | Normal. The digest has enough features for reliable comparison.                                                                                    |
+| 0.02 – 0.10 | Marginal. The digest may be usable but scores should be treated with lower confidence.                                                             |
+| < 0.02      | Degenerate. The digest almost certainly does not contain enough information. Scores from this digest — including self-comparison — are unreliable. |
 
 These ranges were calibrated against the false-positive pair reported in [sdhash/sdhash#17](https://github.com/sdhash/sdhash/issues/17), where two unrelated zero-padded PE files produced stream densities of 0.008 and 0.012 and a similarity score of 100. Both fall below 0.02. Other input types (documents, disk images, shellcode) may have different natural density distributions. The recommended approach is to compute `FeatureDensity()` across a representative sample of your corpus, plot the distribution, and set the threshold at the natural gap between legitimate low-density files and degenerate ones.
 
