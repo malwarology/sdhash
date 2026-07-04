@@ -4,11 +4,22 @@ import "math"
 
 var entropy64Int [65]uint64
 
+// entropy64Delta[k] holds int64(entropy64Int[k]) - int64(entropy64Int[k-1]),
+// the adjacent difference used by entropy64Update. Because entropy64Int is a
+// fixed table, this difference is a constant function of k; precomputing it
+// folds two table loads and a subtract in the hot path down to one load.
+// Indices used: [1,64] (oldCharCnt) and [1,64] (newCharCnt+1).
+var entropy64Delta [65]int64
+
 func init() {
 	// Precompute scaled entropy contributions for each possible byte-frequency count.
 	for i := 1; i <= 64; i++ {
 		p := float64(i) / 64
 		entropy64Int[i] = uint64((-p * math.Log2(p) / 6) * entropyScale)
+	}
+	// Precompute adjacent differences (depends on entropy64Int above).
+	for k := 1; k <= 64; k++ {
+		entropy64Delta[k] = int64(entropy64Int[k]) - int64(entropy64Int[k-1])
 	}
 }
 
@@ -43,8 +54,8 @@ func entropy64Update(prevEntropy uint64, buffer []byte, ascii []byte) uint64 {
 		return prevEntropy
 	}
 
-	oldDiff := int64(entropy64Int[oldCharCnt]) - int64(entropy64Int[oldCharCnt-1])
-	newDiff := int64(entropy64Int[newCharCnt+1]) - int64(entropy64Int[newCharCnt])
+	oldDiff := entropy64Delta[oldCharCnt]
+	newDiff := entropy64Delta[newCharCnt+1]
 
 	entropy := int64(prevEntropy) - oldDiff + newDiff
 	if entropy < 0 {
