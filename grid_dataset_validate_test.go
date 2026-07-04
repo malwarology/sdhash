@@ -115,9 +115,9 @@ func TestGridDDBlocksFor(t *testing.T) {
 		size int
 		want []int
 	}{
-		{512, []int{4 * 1024}},                       // smaller than every block → smallest kept
-		{64 * 1024, []int{4 * 1024, 16 * 1024}},      // 64K file: only blocks strictly < 64K
-		{4 * 1024 * 1024, ddBlockLadder},             // 4M file: full ladder, no coarse
+		{512, []int{4 * 1024}},                  // smaller than every block → smallest kept
+		{64 * 1024, []int{4 * 1024, 16 * 1024}}, // 64K file: only blocks strictly < 64K
+		{4 * 1024 * 1024, ddBlockLadder},        // 4M file: full ladder, no coarse
 		{64 * 1024 * 1024, append(append([]int{}, ddBlockLadder...), ddCoarseBlock)}, // coarse appears
 	}
 	for _, c := range cases {

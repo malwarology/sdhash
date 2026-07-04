@@ -194,7 +194,7 @@ func pearson(xs, ys []float64) float64 {
 // ---------------------------------------------------------------------------
 
 type distStats struct {
-	n                            int
+	n                             int
 	min, p50, p90, p99, max, mean float64
 }
 
@@ -374,8 +374,8 @@ type profileScope struct {
 func startProfileScope(tb testing.TB, name string, wantTrace bool) *profileScope {
 	ps := &profileScope{name: name, dir: gridOutDir(tb), profile: *flagGridProfile, tracing: wantTrace && *flagGridTrace}
 	if ps.profile {
-		runtime.SetBlockProfileRate(1)      // sample every blocking event
-		runtime.SetMutexProfileFraction(1)  // sample every contention event
+		runtime.SetBlockProfileRate(1)     // sample every blocking event
+		runtime.SetMutexProfileFraction(1) // sample every contention event
 		f, err := os.Create(filepath.Join(ps.dir, name+".cpu.pprof"))
 		if err != nil {
 			tb.Fatalf("create cpu profile: %v", err)
