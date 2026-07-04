@@ -6,6 +6,8 @@ import "math"
 // Both digests must have their hamming weights pre-computed (guaranteed after construction).
 // Returns -1 if the comparison cannot be performed (no filters, or no filter pair
 // produced a valid comparison).
+//
+//goland:noinspection DuplicatedCode
 func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount
 
@@ -81,7 +83,7 @@ func sdbfMaxScore(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64 {
 		}
 		e2Cnt := targetSdbf.hamming[i]
 		maxEst := min(e1Cnt, e2Cnt)
-		cutOff := cutoffs256[4096/(s1+s2)]
+		cutOff := cutoffBySum[s1+s2]
 		var score float64
 		match := andPopcount(bf1, bf2)
 		if match > cutOff {

@@ -109,3 +109,24 @@ var cutoffs256 = []uint32{
 }
 
 var bitPositions = []byte{0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80}
+
+// cutoffBySum is cutoffs256 pre-indexed by (s1+s2), folding the integer divide
+// out of the scoring inner loop (sdbfMaxScore). By construction
+// cutoffBySum[sum] == cutoffs256[4096/sum] for every sum that can occur: both
+// element counts reaching the cutoff are in [minElemCount, maxElemDd], so their
+// sum is in [2*minElemCount, 2*maxElemDd] = [32, 384], for which 4096/sum lands
+// in [10, 128] — always a valid cutoffs256 index. Built once at package init.
+var cutoffBySum = buildCutoffBySum()
+
+func buildCutoffBySum() []uint32 {
+	const maxSum = 2 * maxElemDd // 384
+	t := make([]uint32, maxSum+1)
+	for sum := 1; sum <= maxSum; sum++ {
+		idx := 4096 / sum
+		if idx >= len(cutoffs256) {
+			idx = len(cutoffs256) - 1 // defensive; not reached for sum >= 32
+		}
+		t[sum] = cutoffs256[idx]
+	}
+	return t
+}

@@ -7,6 +7,7 @@
 // Modifications to this file warrant extra review. The byte-identity
 // of CompareRef's output against the C++ reference across millions of
 // pairs depends on this code not drifting.
+
 package sdhash
 
 import "math"
@@ -24,6 +25,7 @@ const shortCircuitSlack = 48
 //
 // C++ denominator-zero: when denominator is 0, score_sum is set to -1
 // (not decremented), matching the C++ assignment.
+//goland:noinspection DuplicatedCode
 func sdbfScoreRef(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount
 
@@ -93,7 +95,7 @@ func sdbfMaxScoreRef(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64 {
 		}
 		e2Cnt := targetSdbf.hamming[i]
 		maxEst := min(e1Cnt, e2Cnt)
-		cutOff := cutoffs256[4096/(s1+s2)]
+		cutOff := cutoffBySum[s1+s2]
 
 		// C++ two-pass match: short-circuit screening then exact count.
 		var match uint32

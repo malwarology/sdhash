@@ -19,6 +19,7 @@ import (
 // using a toggle-gated variant of the modern sdbfScore algorithm. With all
 // toggles at their default false values, it produces output identical to
 // sdbfScore. Individual toggles revert specific fixes.
+//goland:noinspection DuplicatedCode
 func sdbfScoreDebug(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount
 
@@ -112,7 +113,7 @@ func sdbfMaxScoreDebug(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64
 		}
 		e2Cnt := targetSdbf.hamming[i]
 		maxEst := min(e1Cnt, e2Cnt)
-		cutOff := cutoffs256[4096/(s1+s2)]
+		cutOff := cutoffBySum[s1+s2]
 
 		var match uint32
 		if DebugRevertExactPopcount {
