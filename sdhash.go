@@ -81,6 +81,7 @@ type sdbf struct {
 	popWinSize     uint32
 	threshold      uint32
 	blockSize      int
+	testFaultHook  func() // test-only: injects a fault in generateChunkRanks to exercise goroutine panic recovery; nil in production
 	entropyWinSize int
 }
 

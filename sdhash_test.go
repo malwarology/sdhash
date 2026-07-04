@@ -575,11 +575,9 @@ func TestGenerateChunkSdbf_MultiChunk_SparseLastFilter(t *testing.T) {
 // generateChunkSdbf goroutine is recovered and returned as an error rather than
 // terminating the process.
 //
-// Construction: sd.blockSize is set to 0 so that generateChunkRanks, which is
-// called inside each Phase 1 goroutine, triggers an integer divide-by-zero on
-// its very first iteration (offset % sd.blockSize). generateChunkSdbf allocates
-// sd.buffer itself at function entry, so nil-ing it beforehand has no effect;
-// blockSize is the correct lever. A 4 MiB buffer with a 1 MiB chunk size
+// Construction: sd.testFaultHook is set so that generateChunkRanks, called
+// inside each Phase 1 goroutine, panics on entry, exercising the goroutine
+// recover path. A 4 MiB buffer with a 1 MiB chunk size
 // produces qt=4, exercising the parallel goroutine pool and recover path.
 func TestGenerateChunkSdbf_GoroutinePanicRecovery(t *testing.T) {
 	t.Parallel()
@@ -588,7 +586,7 @@ func TestGenerateChunkSdbf_GoroutinePanicRecovery(t *testing.T) {
 	buf := randomBuf(4*chunkSize, 100, 100)
 	sd := newTestSdbf(t)
 	sd.origFileSize = uint64(len(buf))
-	sd.blockSize = 0 // divide-by-zero in generateChunkRanks inside the goroutines
+	sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
 
 	var err error
 	checkNotPanics(t,
@@ -878,9 +876,9 @@ func TestParseSdbf_DDWithWindowsLineEnding(t *testing.T) {
 // by generateChunkSdbf is propagated by populateSdbf rather than silently
 // dropped.
 //
-// Construction: sd.blockSize is set to 0 so that generateChunkRanks, called
-// inside each Phase 1 goroutine, triggers an integer divide-by-zero on its
-// first iteration. The buffer must exceed the 32 MiB chunk size that
+// Construction: sd.testFaultHook is set so that generateChunkRanks, called
+// inside each Phase 1 goroutine, panics on entry. The buffer must exceed the
+// 32 MiB chunk size that
 // populateSdbf passes to generateChunkSdbf; a smaller buffer produces
 // totalChunks=1 and hits the single-chunk fast path, which runs
 // generateChunkRanks directly in the calling goroutine with no recover in
@@ -891,7 +889,7 @@ func TestPopulateSdbf_StreamModeErrorPropagation(t *testing.T) {
 
 	buf := make([]byte, 33<<20) // 33 MiB — must exceed the 32 MiB chunk size
 	sd := newTestSdbf(t)
-	sd.blockSize = 0 // divide-by-zero in generateChunkRanks inside the goroutines
+	sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
 
 	var err error
 	checkNotPanics(t,
@@ -909,9 +907,9 @@ func TestPopulateSdbf_StreamModeErrorPropagation(t *testing.T) {
 // by generateBlockSdbf is propagated by populateSdbf rather than silently
 // dropped.
 //
-// Construction: sd.blockSize is set to 0 so that generateChunkRanks, called
-// inside each block goroutine via generateSingleBlockSdbf, triggers an integer
-// divide-by-zero on its first iteration. A buffer of 4×ddBlockSize produces
+// Construction: sd.testFaultHook is set so that generateChunkRanks, called
+// inside each block goroutine via generateSingleBlockSdbf, panics on entry.
+// A buffer of 4×ddBlockSize produces
 // qt=4 goroutines, exercising the parallel block path.
 func TestPopulateSdbf_BlockModeErrorPropagation(t *testing.T) {
 	t.Parallel()
@@ -919,7 +917,7 @@ func TestPopulateSdbf_BlockModeErrorPropagation(t *testing.T) {
 	const ddBlockSize = 1024
 	buf := randomBuf(4*ddBlockSize, 201, 201)
 	sd := newTestSdbf(t)
-	sd.blockSize = 0 // divide-by-zero in generateChunkRanks inside the goroutines
+	sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
 
 	var err error
 	checkNotPanics(t,

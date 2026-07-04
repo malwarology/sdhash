@@ -69,6 +69,9 @@ var asciiPool = sync.Pool{
 // already O(n) and the per-element cost is dominated by the entropy table
 // lookup and the incremental entropy update, not by bounds checks.
 func (sd *sdbf) generateChunkRanks(fileBuffer []byte, chunkRanks []uint16) {
+	if sd.testFaultHook != nil {
+		sd.testFaultHook()
+	}
 	var entropy uint64
 	asciiPtr := asciiPool.Get().(*[]byte)
 	ascii := *asciiPtr
@@ -77,7 +80,7 @@ func (sd *sdbf) generateChunkRanks(fileBuffer []byte, chunkRanks []uint16) {
 
 	limit := len(fileBuffer) - sd.entropyWinSize
 	for offset := 0; offset < limit; offset++ {
-		if offset%sd.blockSize == 0 { // full entropy recalculation at block boundaries
+		if offset%blockSize == 0 { // full entropy recalculation at block boundaries
 			entropy = entropy64Compute(fileBuffer[offset:], ascii)
 		} else { // incremental rolling update
 			entropy = entropy64Update(entropy, fileBuffer[offset-1:], ascii)
