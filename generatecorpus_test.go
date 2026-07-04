@@ -1,4 +1,4 @@
-//go:build corpushash || corpuscompare
+//go:build corpushash || corpuscompare || grid
 
 package sdhash
 
