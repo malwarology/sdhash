@@ -224,7 +224,8 @@ func (sd *sdbf) generateBlockHash(fileBuffer []byte, blockNum uint64, chunkScore
 	if rem > 0 {
 		maxOffset = rem
 	}
-	for i := uint32(0); i < maxOffset-sd.popWinSize && hashCnt < sd.maxElem; i++ {
+	limit := maxOffset - sd.popWinSize
+	for i := uint32(0); i < limit && hashCnt < sd.maxElem; i++ {
 		if uint32(chunkScores[i]) > threshold || (uint32(chunkScores[i]) == threshold && allowed > 0) {
 			sha1Hash := u32sha1(fileBuffer[i : i+sd.popWinSize])
 			bf := sd.buffer[blockNum*uint64(sd.bfSize) : (blockNum+1)*uint64(sd.bfSize)]
