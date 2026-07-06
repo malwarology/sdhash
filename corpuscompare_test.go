@@ -143,8 +143,7 @@ func computeCompareAnchors(t *testing.T, work []corpusWork) *corpusCompareAnchor
 	// Phase 3 — Parallel: score every ordered pair in both modes. Each outer
 	// index i owns a contiguous, disjoint output range [i*n, i*n+n), so the
 	// record slices are written without locking. Scoring uses Compare, the
-	// modern public API, so this anchor does not depend on the transient
-	// debug scoring path.
+	// modern public API.
 	n := len(digests)
 	streamRecs := make([]anchorRecord, n*n)
 	ddRecs := make([]anchorRecord, n*n)
