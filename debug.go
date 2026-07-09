@@ -28,6 +28,16 @@ var DebugRevertAdditiveAccumulation bool
 // Default: false.
 var DebugRevertExactPopcount bool
 
+// DebugRevertChunkScoresDoubleCount makes NewDebug construct digests using the
+// C++-faithful two-block chunk-score feature selection instead of the modern
+// one-increment-per-window selection when true. The C++ two-block algorithm
+// double-counts positions in equal-rank runs; the modern algorithm is the
+// correct one. Unlike the other toggles this affects hashing (digest
+// construction), not scoring, so it changes which features a digest contains.
+//
+// Default: false.
+var DebugRevertChunkScoresDoubleCount bool
+
 // MaxElem returns the per-filter element saturation cap configured for
 // this digest. This is 160 for stream-mode digests and 192 for DD-mode
 // digests.

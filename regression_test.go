@@ -78,6 +78,23 @@ import (
 //    https://github.com/malwarology/sdhash/issues/43
 // ├── 00260000  Stream mode degenerate pair returns score 0 and ok false
 // └── 00270000  DD mode degenerate pair returns score 0 and ok false
+//
+// Issue 57 — generateChunkScores double-counts positions in equal-rank runs
+//    https://github.com/malwarology/sdhash/issues/57
+// ├── 00280000  Reference equivalence: high-entropy inputs
+// ├── 00290000  Reference equivalence: tie-heavy inputs
+// ├── 00300000  Reference equivalence: zero-laden inputs
+// ├── 00310000  Reference equivalence: persistent-min inputs
+// ├── 00320000  Reference equivalence: monotonic inputs
+// ├── 00330000  Reference equivalence: all-equal inputs
+// ├── 00340000  Reference equivalence: all-zero inputs
+// ├── 00350000  Golden: high-entropy single interior minimum
+// ├── 00360000  Golden: tie-heavy rightmost-of-first-run selection
+// ├── 00370000  Golden: zero-laden zero-minimum skipped
+// ├── 00380000  Golden: persistent-min single position, no double-count
+// ├── 00390000  Golden: monotonic minimum at left edge
+// ├── 00400000  Golden: all-equal rightmost-of-window, one increment per window
+// └── 00410000  Golden: all-zero produces no scores
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -88,11 +105,12 @@ import (
 // 00010000  Default index not created
 // ---------------------------------------------------------------------------
 
+//goland:noinspection GoDeprecation
 func TestIssue1DefaultIndexNotCreated(t *testing.T) {
 	t.Parallel()
 	data := decryptTestFile(t, "testdata/issue1.bin.enc")
 
-	factory, err := New(data)
+	factory, err := NewRef(data)
 	mustNoError(t, err)
 
 	sd, err := factory.Compute()
@@ -115,6 +133,7 @@ func TestIssue1DefaultIndexNotCreated(t *testing.T) {
 // 00020000  Stream hash matches reference
 // ---------------------------------------------------------------------------
 
+//goland:noinspection GoDeprecation
 func TestIssue1StreamHash_MatchesReference(t *testing.T) {
 	t.Parallel()
 
@@ -125,7 +144,7 @@ func TestIssue1StreamHash_MatchesReference(t *testing.T) {
 	expected := string(expectedBytes)
 	expected = strings.TrimRight(expected, "\r\n") + "\n"
 
-	factory, err := New(data)
+	factory, err := NewRef(data)
 	mustNoError(t, err)
 
 	sd, err := factory.Compute()
@@ -139,6 +158,7 @@ func TestIssue1StreamHash_MatchesReference(t *testing.T) {
 // 00030000  DD hash matches reference
 // ---------------------------------------------------------------------------
 
+//goland:noinspection GoDeprecation
 func TestIssue1DDHash_MatchesReference(t *testing.T) {
 	t.Parallel()
 
@@ -149,7 +169,7 @@ func TestIssue1DDHash_MatchesReference(t *testing.T) {
 	expected := string(expectedBytes)
 	expected = strings.TrimRight(expected, "\r\n") + "\n"
 
-	factory, err := New(data)
+	factory, err := NewRef(data)
 	mustNoError(t, err)
 
 	// The DD reference was produced with a 1 MiB block size,
@@ -245,8 +265,8 @@ func TestIssue2_DegenerateStreamDigests(t *testing.T) {
 	dataA := decryptTestFile(t, "testdata/issue2a.bin.enc")
 	dataB := decryptTestFile(t, "testdata/issue2b.bin.enc")
 
-	sdA := streamDigest(t, dataA)
-	sdB := streamDigest(t, dataB)
+	sdA := streamDigestRef(t, dataA)
+	sdB := streamDigestRef(t, dataB)
 
 	checkAtMost(t, sdA.FeatureDensity(), 0.02,
 		"issue2a stream density must be below 0.02")
@@ -817,4 +837,231 @@ func TestIssue43_DDDegeneratePairScore(t *testing.T) {
 		"Compare must return ok=true; pre-fix bug flipped it to false (regression: issue #43)")
 	checkEqual(t, 0, score,
 		"Compare must return score=0 for this pair (regression: issue #43)")
+}
+
+// =========================================================================
+// Issue 57 — generateChunkScores double-counts positions in equal-rank runs
+//    https://github.com/malwarology/sdhash/issues/57
+//
+// The pre-fix two-block selector double-counted positions in runs of equal
+// ranks. The fixed function increments exactly one position per window, chosen
+// by the per-window rule captured in bruteScoresFirstRun. The reference-
+// equivalence tests assert the production function matches that spec across
+// adversarial inputs; the golden tests pin the exact output for crafted cases.
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00280000  Reference equivalence: high-entropy inputs
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Equivalence_HighEntropy(t *testing.T) {
+	t.Parallel()
+	for seed := uint64(1); seed <= 20; seed++ {
+		for _, ranks := range rankCasesFor("highentropy", seed) {
+			checkChunkScoresMatchSpec(t, ranks, fmt.Sprintf("high-entropy seed=%d n=%d (regression: issue #57)", seed, len(ranks)))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00290000  Reference equivalence: tie-heavy inputs
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Equivalence_TieHeavy(t *testing.T) {
+	t.Parallel()
+	for seed := uint64(1); seed <= 20; seed++ {
+		for _, ranks := range rankCasesFor("tieheavy", seed) {
+			checkChunkScoresMatchSpec(t, ranks, fmt.Sprintf("tie-heavy seed=%d n=%d (regression: issue #57)", seed, len(ranks)))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00300000  Reference equivalence: zero-laden inputs
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Equivalence_ZeroLaden(t *testing.T) {
+	t.Parallel()
+	for seed := uint64(1); seed <= 20; seed++ {
+		for _, ranks := range rankCasesFor("zeroladen", seed) {
+			checkChunkScoresMatchSpec(t, ranks, fmt.Sprintf("zero-laden seed=%d n=%d (regression: issue #57)", seed, len(ranks)))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00310000  Reference equivalence: persistent-min inputs
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Equivalence_PersistentMin(t *testing.T) {
+	t.Parallel()
+	for seed := uint64(1); seed <= 20; seed++ {
+		for _, ranks := range rankCasesFor("persistmin", seed) {
+			checkChunkScoresMatchSpec(t, ranks, fmt.Sprintf("persistent-min seed=%d n=%d (regression: issue #57)", seed, len(ranks)))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00320000  Reference equivalence: monotonic inputs
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Equivalence_Monotonic(t *testing.T) {
+	t.Parallel()
+	for seed := uint64(1); seed <= 20; seed++ {
+		for _, ranks := range rankCasesFor("monotonic", seed) {
+			checkChunkScoresMatchSpec(t, ranks, fmt.Sprintf("monotonic seed=%d n=%d (regression: issue #57)", seed, len(ranks)))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00330000  Reference equivalence: all-equal inputs
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Equivalence_AllEqual(t *testing.T) {
+	t.Parallel()
+	for seed := uint64(1); seed <= 20; seed++ {
+		for _, ranks := range rankCasesFor("allequal", seed) {
+			checkChunkScoresMatchSpec(t, ranks, fmt.Sprintf("all-equal seed=%d n=%d (regression: issue #57)", seed, len(ranks)))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00340000  Reference equivalence: all-zero inputs
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Equivalence_AllZero(t *testing.T) {
+	t.Parallel()
+	for seed := uint64(1); seed <= 20; seed++ {
+		for _, ranks := range rankCasesFor("allzero", seed) {
+			checkChunkScoresMatchSpec(t, ranks, fmt.Sprintf("all-zero seed=%d n=%d (regression: issue #57)", seed, len(ranks)))
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00350000  Golden: high-entropy single interior minimum
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Golden_HighEntropy(t *testing.T) {
+	t.Parallel()
+	// Distinct values with a single clear minimum at position 32.
+	ranks := make([]uint16, 65)
+	for i := range ranks {
+		ranks[i] = uint16(100 + i)
+	}
+	ranks[32] = 1
+	want := make([]uint16, 65)
+	want[32] = 1
+	checkChunkScoresGolden(t, ranks, want, "high-entropy single interior minimum (regression: issue #57)")
+}
+
+// ---------------------------------------------------------------------------
+// 00360000  Golden: tie-heavy rightmost-of-first-run selection
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Golden_TieHeavy(t *testing.T) {
+	t.Parallel()
+	// Minimum value 2 appears as a consecutive run at 5,6,7 and again,
+	// non-consecutively, at 20. The rule selects the rightmost of the FIRST
+	// run (position 7); the latter, non-adjacent 2 is ignored.
+	ranks := make([]uint16, 65)
+	for i := range ranks {
+		ranks[i] = 9
+	}
+	ranks[5], ranks[6], ranks[7] = 2, 2, 2
+	ranks[20] = 2
+	want := make([]uint16, 65)
+	want[7] = 1
+	checkChunkScoresGolden(t, ranks, want, "tie-heavy rightmost-of-first-run (regression: issue #57)")
+}
+
+// ---------------------------------------------------------------------------
+// 00370000  Golden: zero-laden zero-minimum skipped
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Golden_ZeroLaden(t *testing.T) {
+	t.Parallel()
+	// The array minimum is a zero at position 10, but zeros are never selected;
+	// the minimum NONZERO rank (3 at position 30) wins instead.
+	ranks := make([]uint16, 65)
+	for i := range ranks {
+		ranks[i] = 9
+	}
+	ranks[10] = 0
+	ranks[30] = 3
+	want := make([]uint16, 65)
+	want[30] = 1
+	checkChunkScoresGolden(t, ranks, want, "zero-laden zero-minimum skipped (regression: issue #57)")
+}
+
+// ---------------------------------------------------------------------------
+// 00380000  Golden: persistent-min single position, no double-count
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Golden_PersistentMin(t *testing.T) {
+	t.Parallel()
+	// A run of the minimum value (1) at positions 30..40 sits fully inside all
+	// six windows. Each window selects position 40 (rightmost of the run) and
+	// increments it exactly once: the pre-fix double-count would inflate this.
+	ranks := make([]uint16, 70)
+	for i := range ranks {
+		ranks[i] = 9
+	}
+	for i := 30; i <= 40; i++ {
+		ranks[i] = 1
+	}
+	want := make([]uint16, 70)
+	want[40] = 6
+	checkChunkScoresGolden(t, ranks, want, "persistent-min single position no double-count (regression: issue #57)")
+}
+
+// ---------------------------------------------------------------------------
+// 00390000  Golden: monotonic minimum at left edge
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Golden_Monotonic(t *testing.T) {
+	t.Parallel()
+	// Strictly increasing ranks: each window's minimum is its left-edge element.
+	ranks := make([]uint16, 66)
+	for i := range ranks {
+		ranks[i] = uint16(i + 1)
+	}
+	want := make([]uint16, 66)
+	want[0] = 1
+	want[1] = 1
+	checkChunkScoresGolden(t, ranks, want, "monotonic minimum at left edge (regression: issue #57)")
+}
+
+// ---------------------------------------------------------------------------
+// 00400000  Golden: all-equal rightmost-of-window, one increment per window
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Golden_AllEqual(t *testing.T) {
+	t.Parallel()
+	// All ranks equal: each window's first run spans the whole window, so its
+	// rightmost element is selected. Two windows -> positions 63 and 64, one
+	// increment each (the pre-fix bug produced [.,.,1,0,2] here).
+	ranks := make([]uint16, 66)
+	for i := range ranks {
+		ranks[i] = 7
+	}
+	want := make([]uint16, 66)
+	want[63] = 1
+	want[64] = 1
+	checkChunkScoresGolden(t, ranks, want, "all-equal rightmost-of-window (regression: issue #57)")
+}
+
+// ---------------------------------------------------------------------------
+// 00410000  Golden: all-zero produces no scores
+// ---------------------------------------------------------------------------
+
+func TestIssue57_Golden_AllZero(t *testing.T) {
+	t.Parallel()
+	// Zero ranks are never selected, so no position is ever incremented.
+	ranks := make([]uint16, 66)
+	want := make([]uint16, 66)
+	checkChunkScoresGolden(t, ranks, want, "all-zero produces no scores (regression: issue #57)")
 }

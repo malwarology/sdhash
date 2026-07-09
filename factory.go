@@ -87,6 +87,27 @@ func New(buffer []byte) (SdbfFactory, error) {
 	}, nil
 }
 
+// NewRef returns a factory that produces a Sdbf using the C++-reference-
+// compatible construction path (the pre-fix chunk-score feature selection).
+// It is the construction-side analogue of CompareRef: it exists during the
+// reference correctness phase so external harnesses can compare the Go
+// library's digests byte-for-byte against the C++ reference via CSV diffing.
+//
+// Deprecated: NewRef will be removed when C++ reference compatibility is
+// dropped at 1.0.0. New code should use New, which produces the modern digest.
+//
+//goland:noinspection GoDeprecation
+func NewRef(buffer []byte) (SdbfFactory, error) {
+	if len(buffer) < MinFileSize {
+		return nil, fmt.Errorf("buffer length must be at least %d bytes", MinFileSize)
+	}
+	buf := make([]byte, len(buffer))
+	copy(buf, buffer)
+	return &sdbfFactoryRef{
+		buffer: buf,
+	}, nil
+}
+
 // WithBlockSize returns a new factory with the given block size configured.
 // It does not modify the receiver.
 func (sdf *sdbfFactory) WithBlockSize(blockSize uint32) SdbfFactory {

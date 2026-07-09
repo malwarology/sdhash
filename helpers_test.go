@@ -217,6 +217,18 @@ func streamDigest(t *testing.T, buf []byte) Sdbf {
 	return sd
 }
 
+// streamDigestRef computes a stream-mode digest for buf and stops the test on error. Uses C++ compatible API.
+//
+//goland:noinspection GoDeprecation
+func streamDigestRef(t *testing.T, buf []byte) Sdbf {
+	t.Helper()
+	factory, err := NewRef(buf)
+	mustNoError(t, err)
+	sd, err := factory.Compute()
+	mustNoError(t, err)
+	return sd
+}
+
 // ddDigest computes a DD-mode digest for buf with the given block size and stops the test on error.
 func ddDigest(t *testing.T, buf []byte, blockSize uint32) Sdbf {
 	t.Helper()
@@ -244,4 +256,157 @@ func newTestSdbf(t *testing.T) *sdbf {
 	mustNoError(t, err)
 	sd.bigFilters = append(sd.bigFilters, bf)
 	return sd
+}
+
+// ---------------------------------------------------------------------------
+// generateChunkScores contract helpers (issue #57)
+// ---------------------------------------------------------------------------
+
+// chunkScoresOf runs the production generateChunkScores over ranks (with
+// chunkSize == len(ranks)) and returns the resulting chunkScores.
+func chunkScoresOf(ranks []uint16) []uint16 {
+	sd := &sdbf{popWinSize: popWinSize}
+	scores := make([]uint16, len(ranks))
+	sd.generateChunkScores(ranks, uint64(len(ranks)), scores, nil)
+	return scores
+}
+
+// bruteScoresFirstRun is the independent per-window specification of the fixed
+// generateChunkScores selection rule: for each window, seed at the left edge,
+// take the minimum nonzero rank, break ties by the rightmost element of the
+// first consecutive run of that value, and increment that position exactly once
+// (only if its rank is > 0). It carries no state between windows, so it cannot
+// reproduce the pre-fix double-count; a correct generateChunkScores must match
+// it on every input.
+//
+//goland:noinspection DuplicatedCode
+func bruteScoresFirstRun(ranks []uint16) []uint16 {
+	scores := make([]uint16, len(ranks))
+	chunkSize := uint64(len(ranks))
+	popWin := uint64(popWinSize)
+	if chunkSize <= popWin {
+		return scores
+	}
+	for w := uint64(0); w < chunkSize-popWin; w++ {
+		minRank := ranks[w]
+		minPos := w
+		for j := w + 1; j < w+popWin; j++ {
+			if ranks[j] < minRank && ranks[j] > 0 {
+				minRank = ranks[j]
+				minPos = j
+			} else if minPos == j-1 && ranks[j] == minRank {
+				minPos = j
+			}
+		}
+		if ranks[minPos] > 0 {
+			scores[minPos]++
+		}
+	}
+	return scores
+}
+
+// firstDiffUint16 returns the index of the first position at which a and b
+// differ, or -1 if they are equal.
+func firstDiffUint16(a, b []uint16) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	if len(a) != len(b) {
+		return n
+	}
+	return -1
+}
+
+// rankCasesFor generates the adversarial rank inputs for a single category
+// across a fixed size ladder, seeded deterministically. Categories:
+// highentropy, tieheavy, zeroladen, persistmin, monotonic, allequal, allzero.
+func rankCasesFor(category string, seed uint64) [][]uint16 {
+	rng := rand.New(rand.NewPCG(seed, 0x9E3779B9))
+	sizes := []int{popWinSize + 2, popWinSize + 10, 200, 1000, 4096}
+	var out [][]uint16
+
+	for _, n := range sizes {
+		r := make([]uint16, n)
+		switch category {
+		case "highentropy": // mostly distinct values
+			for i := range r {
+				r[i] = uint16(1 + rng.IntN(1000))
+			}
+		case "tieheavy": // tiny value set → many runs and non-consecutive ties
+			for i := range r {
+				r[i] = uint16(1 + rng.IntN(3))
+			}
+		case "zeroladen": // ~40% zeros interspersed with small values
+			for i := range r {
+				if rng.IntN(10) < 4 {
+					r[i] = 0
+				} else {
+					r[i] = uint16(1 + rng.IntN(5))
+				}
+			}
+		case "persistmin": // low value held for long stretches
+			for i := range r {
+				r[i] = uint16(50 + rng.IntN(50))
+			}
+			for i := 0; i < n; i += popWinSize * 2 {
+				runLen := 1 + rng.IntN(popWinSize)
+				for k := 0; k < runLen && i+k < n; k++ {
+					r[i+k] = uint16(1 + rng.IntN(2))
+				}
+			}
+		case "monotonic": // increasing; min always at the left edge
+			for i := range r {
+				r[i] = uint16(1 + i%1000)
+			}
+		case "allequal": // every position equal and nonzero
+			for i := range r {
+				r[i] = 7
+			}
+		case "allzero": // every position zero (left as the zero value)
+		default:
+			panic("rankCasesFor: unknown category " + category)
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// checkChunkScoresMatchSpec asserts that the production generateChunkScores
+// output for ranks equals the per-window specification (bruteScoresFirstRun),
+// reporting the first divergence with surrounding context.
+func checkChunkScoresMatchSpec(t *testing.T, ranks []uint16, msg string) {
+	t.Helper()
+	got := chunkScoresOf(ranks)
+	want := bruteScoresFirstRun(ranks)
+	idx := firstDiffUint16(got, want)
+	if idx < 0 {
+		return
+	}
+	lo := idx - 3
+	if lo < 0 {
+		lo = 0
+	}
+	hi := idx + 4
+	if hi > len(ranks) {
+		hi = len(ranks)
+	}
+	t.Errorf("%s: chunkScores diverge from per-window spec at pos %d (got=%d want=%d)\n  ranks[%d:%d]=%v\n  got  [%d:%d]=%v\n  want [%d:%d]=%v",
+		msg, idx, got[idx], want[idx], lo, hi, ranks[lo:hi], lo, hi, got[lo:hi], lo, hi, want[lo:hi])
+}
+
+// checkChunkScoresGolden asserts that the production generateChunkScores output
+// for ranks equals the pinned expected chunkScores.
+func checkChunkScoresGolden(t *testing.T, ranks, want []uint16, msg string) {
+	t.Helper()
+	got := chunkScoresOf(ranks)
+	if idx := firstDiffUint16(got, want); idx >= 0 {
+		t.Errorf("%s: chunkScores mismatch at pos %d (got=%d want=%d)\n  got:  %v\n  want: %v",
+			msg, idx, got[idx], want[idx], got, want)
+	}
 }

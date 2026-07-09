@@ -40,8 +40,8 @@ import (
 // anchor is unpinned: the test then computes it, prints it, and fails with an
 // instruction to verify and paste the value.
 const (
-	corpusHashStreamAnchor = "98c9880698006cd95f7363cc3342dac23313066abbf5916f283822338cdb4462"
-	corpusHashDDAnchor     = "e90b685cfbdf90077216641abbc474124e66fb2a5e438a66aa4abcc18aeb6dc4"
+	corpusHashStreamAnchor = "8e0245ceceaee89c7da5c40cf5f3a37647ec8cda5791809e6d96acc2473c0444"
+	corpusHashDDAnchor     = "6efcd1a72c701e17a56724b035d4591d0b2d45c92fcbf990e5fc1e19032930a6"
 )
 
 // corpusHashAnchors holds the two computed anchors.

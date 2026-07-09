@@ -34,6 +34,13 @@ import (
 // ├── 00140000  CompareRef foreign Sdbf returns -1
 // ├── 00150000  CompareRef self-compare returns 100
 // └── 00160000  CompareRef returns valid score on random pair
+//
+// IV. generate_ref.go (NewRef construction chain)
+// ├── 00170000  NewRef short buffer returns an error
+// ├── 00180000  NewRef stream round-trip self-compares at 100
+// ├── 00190000  NewRef DD round-trip (multi-block) self-compares at 100
+// ├── 00200000  generateChunkSdbfRef multi-chunk goroutine path
+// └── 00210000  NewRef digest differs from modern New on tie-heavy input
 
 // =========================================================================
 // I. bloom_ref.go (andPopcountCut)
@@ -404,8 +411,6 @@ func TestRef_MaxScoreRef_NoScoreableTarget(t *testing.T) {
 // TestRef_CompareRef_NilOther verifies that CompareRef returns the
 // degenerate sentinel -1 (rather than panicking) when the other argument
 // is the nil Sdbf interface value.
-//
-//goland:noinspection GoDeprecation
 func TestRef_CompareRef_NilOther(t *testing.T) {
 	t.Parallel()
 
@@ -422,8 +427,6 @@ func TestRef_CompareRef_NilOther(t *testing.T) {
 // Sdbf implementation (one that satisfies the interface but is not the
 // internal *sdbf type) returns -1 rather than panicking on the type
 // assertion. Mirrors TestIssue17_CompareForeignImpl for the modern Compare.
-//
-//goland:noinspection GoDeprecation
 func TestRef_CompareRef_ForeignOther(t *testing.T) {
 	t.Parallel()
 
@@ -444,8 +447,6 @@ func TestRef_CompareRef_ForeignOther(t *testing.T) {
 // TestRef_CompareRef_SelfCompare verifies that a high-entropy digest
 // compared with itself through the reference path returns 100. This is
 // the most basic correctness check on the reference scoring pipeline.
-//
-//goland:noinspection GoDeprecation
 func TestRef_CompareRef_SelfCompare(t *testing.T) {
 	t.Parallel()
 
@@ -461,8 +462,6 @@ func TestRef_CompareRef_SelfCompare(t *testing.T) {
 // TestRef_CompareRef_RandomPair is a smoke test that CompareRef on two
 // independent high-entropy buffers returns an integer in [0, 100] (or -1
 // for a degenerate comparison) without panicking.
-//
-//goland:noinspection GoDeprecation
 func TestRef_CompareRef_RandomPair(t *testing.T) {
 	t.Parallel()
 
@@ -472,4 +471,350 @@ func TestRef_CompareRef_RandomPair(t *testing.T) {
 	got := sdA.CompareRef(sdB)
 	checkAtLeast(t, got, -1, "CompareRef result must be ≥ -1")
 	checkAtMost(t, got, 100, "CompareRef result must be ≤ 100")
+}
+
+// =========================================================================
+// IV. generate_ref.go (NewRef construction chain)
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00170000  NewRef short buffer returns an error
+// ---------------------------------------------------------------------------
+
+// TestRef_NewRef_ShortBuffer verifies NewRef rejects a buffer below the
+// minimum input size, mirroring New.
+//
+//goland:noinspection GoDeprecation
+func TestRef_NewRef_ShortBuffer(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRef(make([]byte, MinFileSize-1))
+	checkError(t, err, "NewRef must error on a buffer shorter than MinFileSize")
+}
+
+// ---------------------------------------------------------------------------
+// 00180000  NewRef stream round-trip self-compares at 100
+// ---------------------------------------------------------------------------
+
+// TestRef_NewRef_StreamRoundTrip drives the full reference stream construction
+// chain (NewRef -> Compute -> createSdbfRef -> populateSdbfRef ->
+// generateChunkSdbfRef -> generateChunkScoresRef) and checks the digest is
+// well-formed by self-comparing at 100.
+//
+//goland:noinspection GoDeprecation
+func TestRef_NewRef_StreamRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	factory, err := NewRef(randomBuf(1<<19, 11, 11)) // 512 KiB, single chunk
+	mustNoError(t, err, "NewRef must accept a valid buffer")
+	sd, err := factory.Compute()
+	mustNoError(t, err, "reference stream Compute must not error")
+
+	score, ok := sd.Compare(sd)
+	checkEqual(t, true, ok, "reference stream self-compare must be scoreable")
+	checkEqual(t, 100, score, "reference stream digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00190000  NewRef DD round-trip (multi-block) self-compares at 100
+// ---------------------------------------------------------------------------
+
+// TestRef_NewRef_DDRoundTrip drives the reference block construction chain
+// (WithBlockSize -> populateSdbfRef block branch -> generateBlockSdbfRef ->
+// generateSingleBlockSdbfRef). A 1 MiB buffer with a 64 KiB block size yields
+// 16 blocks, exercising the parallel block goroutine pool.
+//
+//goland:noinspection GoDeprecation
+func TestRef_NewRef_DDRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	factory, err := NewRef(randomBuf(1<<20, 12, 12))
+	mustNoError(t, err, "NewRef must accept a valid buffer")
+	sd, err := factory.WithBlockSize(1 << 16).Compute()
+	mustNoError(t, err, "reference DD Compute must not error")
+
+	score, ok := sd.Compare(sd)
+	checkEqual(t, true, ok, "reference DD self-compare must be scoreable")
+	checkEqual(t, 100, score, "reference DD digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00200000  generateChunkSdbfRef multi-chunk goroutine path
+// ---------------------------------------------------------------------------
+
+// TestRef_GenerateChunkSdbfRef_MultiChunk exercises the parallel goroutine
+// phase of the reference stream path by calling generateChunkSdbfRef directly
+// with a 1 MiB chunk size and a 3.5 MiB buffer (qt=3, rem=0.5 MiB,
+// totalChunks=4), mirroring TestGenerateChunkSdbf_MultiChunk.
+func TestRef_GenerateChunkSdbfRef_MultiChunk(t *testing.T) {
+	t.Parallel()
+
+	const chunkSize = 1 << 20
+	const totalSize = 3*chunkSize + chunkSize/2
+
+	buf := randomBuf(totalSize, 13, 13)
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(totalSize)
+
+	mustNoError(t, sd.generateChunkSdbfRef(buf, chunkSize),
+		"generateChunkSdbfRef must not error on valid multi-chunk input")
+	sd.computeHamming()
+
+	checkGreater(t, sd.bfCount, uint32(0), "multi-chunk reference digest must have at least one filter")
+	checkEqual(t, 100, sdbfScore(sd, sd), "multi-chunk reference digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00210000  NewRef digest differs from modern New on tie-heavy input
+// ---------------------------------------------------------------------------
+
+// TestRef_NewRef_DiffersFromNew confirms the reference path preserves the
+// pre-fix chunk-score selection: on tie-heavy input, where the double-count
+// fix changes feature selection, NewRef and New must produce different digests.
+//
+//goland:noinspection GoDeprecation
+func TestRef_NewRef_DiffersFromNew(t *testing.T) {
+	t.Parallel()
+
+	// Few distinct byte values -> many equal ranks -> the case the fix changes.
+	buf := make([]byte, 1<<18)
+	r := uint64(0x9E3779B97F4A7C15)
+	for i := range buf {
+		r = r*6364136223846793005 + 1442695040888963407
+		buf[i] = byte(r>>60) & 0x03
+	}
+
+	refFactory, err := NewRef(buf)
+	mustNoError(t, err, "NewRef must accept the buffer")
+	refSD, err := refFactory.Compute()
+	mustNoError(t, err, "NewRef Compute must not error")
+
+	modFactory, err := New(buf)
+	mustNoError(t, err, "New must accept the buffer")
+	modSD, err := modFactory.Compute()
+	mustNoError(t, err, "New Compute must not error")
+
+	if refSD.String() == modSD.String() {
+		t.Error("NewRef and New produced identical digests on tie-heavy input; expected the reference path to differ")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00220000  generateChunkSdbfRef chunk size too small
+// ---------------------------------------------------------------------------
+
+// TestRef_GenerateChunkSdbfRef_ChunkSizeTooSmall covers the guard that rejects
+// a chunk size not strictly greater than popWinSize.
+func TestRef_GenerateChunkSdbfRef_ChunkSizeTooSmall(t *testing.T) {
+	t.Parallel()
+
+	buf := randomBuf(MinFileSize, 31, 31)
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(MinFileSize)
+
+	checkError(t, sd.generateChunkSdbfRef(buf, uint64(popWinSize)),
+		"generateChunkSdbfRef chunkSize <= popWinSize must return an error")
+}
+
+// ---------------------------------------------------------------------------
+// 00230000  generateChunkSdbfRef exactly one chunk (qt == 1)
+// ---------------------------------------------------------------------------
+
+// TestRef_GenerateChunkSdbfRef_ExactlyOneChunk covers the qt==1 branch of the
+// single-chunk fast path (fileSize == chunkSize exactly).
+func TestRef_GenerateChunkSdbfRef_ExactlyOneChunk(t *testing.T) {
+	t.Parallel()
+
+	const size = 1 << 19
+	buf := randomBuf(size, 32, 32)
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(size)
+
+	mustNoError(t, sd.generateChunkSdbfRef(buf, size), "generateChunkSdbfRef must not error")
+	sd.computeHamming()
+	checkGreater(t, sd.bfCount, uint32(0), "exactly-one-chunk reference digest must have a filter")
+	checkEqual(t, 100, sdbfScore(sd, sd), "exactly-one-chunk reference digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00240000  generateChunkSdbfRef sparse last filter pruning
+// ---------------------------------------------------------------------------
+
+// TestRef_GenerateChunkSdbfRef_SparseLastFilter covers the sparse-last-filter
+// pruning branch (bfCount > 1 && lastCount < maxElem/8).
+func TestRef_GenerateChunkSdbfRef_SparseLastFilter(t *testing.T) {
+	t.Parallel()
+
+	const chunkSize = 10240
+	buf := make([]byte, 2*chunkSize)
+	copy(buf[:chunkSize], randomBuf(chunkSize, 1, 1))
+
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(len(buf))
+
+	mustNoError(t, sd.generateChunkSdbfRef(buf, chunkSize), "generateChunkSdbfRef must not error")
+	sd.computeHamming()
+	checkEqual(t, uint32(1), sd.bfCount, "bfCount must be 1 after sparse-filter pruning")
+	checkEqual(t, 100, sdbfScore(sd, sd), "pruned reference digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00250000  generateChunkSdbfRef goroutine panic recovery
+// ---------------------------------------------------------------------------
+
+// TestRef_GenerateChunkSdbfRef_GoroutinePanicRecovery covers the panicErr path
+// of the reference multi-chunk goroutine phase.
+func TestRef_GenerateChunkSdbfRef_GoroutinePanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	const chunkSize = 1 << 20
+	buf := randomBuf(4*chunkSize, 100, 100)
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(len(buf))
+	sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+
+	var err error
+	checkNotPanics(t, func() { err = sd.generateChunkSdbfRef(buf, chunkSize) },
+		"generateChunkSdbfRef must not propagate a goroutine panic")
+	checkError(t, err, "generateChunkSdbfRef must return an error when a goroutine panics")
+}
+
+// ---------------------------------------------------------------------------
+// 00260000  generateBlockSdbfRef goroutine panic recovery
+// ---------------------------------------------------------------------------
+
+// TestRef_GenerateBlockSdbfRef_GoroutinePanicRecovery covers the panicErr path
+// of the reference block goroutine phase.
+func TestRef_GenerateBlockSdbfRef_GoroutinePanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	const ddBlockSize = 1024
+	buf := randomBuf(1<<20, 101, 101)
+	sd := newTestSdbf(t)
+	sd.ddBlockSize = ddBlockSize
+	sd.maxElem = maxElemDd
+	sd.origFileSize = uint64(len(buf))
+	sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+
+	var err error
+	checkNotPanics(t, func() { err = sd.generateBlockSdbfRef(buf) },
+		"generateBlockSdbfRef must not propagate a goroutine panic")
+	checkError(t, err, "generateBlockSdbfRef must return an error when a goroutine panics")
+}
+
+// ---------------------------------------------------------------------------
+// 00270000  populateSdbfRef stream and block error propagation
+// ---------------------------------------------------------------------------
+
+// TestRef_PopulateSdbfRef_ErrorPropagation covers the two error-propagation
+// branches in populateSdbfRef (stream and block) via an injected goroutine
+// fault, plus the ddBlockSize-too-small guard.
+func TestRef_PopulateSdbfRef_ErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stream", func(t *testing.T) {
+		t.Parallel()
+		buf := make([]byte, 33<<20)
+		sd := newTestSdbf(t)
+		sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+		var err error
+		checkNotPanics(t, func() { _, err = populateSdbfRef(sd, buf, 0) },
+			"populateSdbfRef must not propagate a goroutine panic")
+		checkError(t, err, "populateSdbfRef must propagate a stream error")
+	})
+
+	t.Run("block", func(t *testing.T) {
+		t.Parallel()
+		const ddBlockSize = 1024
+		buf := randomBuf(4*ddBlockSize, 201, 201)
+		sd := newTestSdbf(t)
+		sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+		var err error
+		checkNotPanics(t, func() { _, err = populateSdbfRef(sd, buf, ddBlockSize) },
+			"populateSdbfRef must not propagate a goroutine panic")
+		checkError(t, err, "populateSdbfRef must propagate a block error")
+	})
+
+	t.Run("block size too small", func(t *testing.T) {
+		t.Parallel()
+		buf := randomBuf(MinFileSize, 202, 202)
+		sd := newTestSdbf(t)
+		_, err := populateSdbfRef(sd, buf, uint32(popWinSize)-1)
+		checkError(t, err, "populateSdbfRef must error when ddBlockSize < popWinSize")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// 00280000  generateBlockSdbfRef remainder block
+// ---------------------------------------------------------------------------
+
+// TestRef_NewRef_DDRemainderBlock covers the trailing remainder-block branch of
+// generateBlockSdbfRef (rem >= MinFileSize), using a buffer whose length is not
+// a multiple of the block size.
+//
+//goland:noinspection GoDeprecation
+func TestRef_NewRef_DDRemainderBlock(t *testing.T) {
+	t.Parallel()
+
+	// 3 full 64 KiB blocks + a 32 KiB remainder (>= MinFileSize).
+	buf := randomBuf(3*(1<<16)+(1<<15), 33, 33)
+	factory, err := NewRef(buf)
+	mustNoError(t, err, "NewRef must accept the buffer")
+	sd, err := factory.WithBlockSize(1 << 16).Compute()
+	mustNoError(t, err, "reference DD remainder Compute must not error")
+
+	score, ok := sd.Compare(sd)
+	checkEqual(t, true, ok, "reference DD remainder self-compare must be scoreable")
+	checkEqual(t, 100, score, "reference DD remainder digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00290000  generateChunkSdbfRef single-chunk sparse last filter
+// ---------------------------------------------------------------------------
+
+// TestRef_GenerateChunkSdbfRef_SingleChunkSparse covers the sparse-last-filter
+// pruning branch inside the single-chunk fast path (totalChunks == 1).
+func TestRef_GenerateChunkSdbfRef_SingleChunkSparse(t *testing.T) {
+	t.Parallel()
+
+	const size = 20480
+	buf := make([]byte, size)
+	copy(buf[:size/2], randomBuf(size/2, 1, 1)) // first half feature-rich, rest zero
+
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(size)
+
+	mustNoError(t, sd.generateChunkSdbfRef(buf, size), "generateChunkSdbfRef must not error")
+	sd.computeHamming()
+	checkEqual(t, uint32(1), sd.bfCount,
+		"single-chunk sparse pruning must reduce bfCount to 1")
+	checkEqual(t, 100, sdbfScore(sd, sd), "pruned single-chunk reference digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00300000  generateSingleBlockSdbfRef histogram accumulation
+// ---------------------------------------------------------------------------
+
+// TestRef_NewRef_DDModerateDensity drives DD blocks whose per-block feature
+// count stays under maxElem, so the score-histogram accumulation loop in
+// generateSingleBlockSdbfRef runs to completion without the early break.
+//
+//goland:noinspection GoDeprecation
+func TestRef_NewRef_DDModerateDensity(t *testing.T) {
+	t.Parallel()
+
+	// Repetitive low-entropy content: moderate, bounded feature count per block.
+	buf := make([]byte, 1<<20)
+	for i := range buf {
+		buf[i] = byte(i % 64)
+	}
+
+	factory, err := NewRef(buf)
+	mustNoError(t, err, "NewRef must accept the buffer")
+	sd, err := factory.WithBlockSize(1 << 16).Compute()
+	mustNoError(t, err, "reference DD moderate-density Compute must not error")
+
+	if sd.String() == "" {
+		t.Error("moderate-density DD reference digest must be non-empty")
+	}
 }

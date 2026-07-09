@@ -35,18 +35,30 @@ import (
 // ├── 00090000  sdbfScoreDebug both digests fully sparse returns -1
 // ├── 00100000  sdbfMaxScoreDebug sparse source returns 0
 // ├── 00110000  sdbfMaxScoreDebug no scoreable target returns -1
-// └── 00120000  sdbfScore and sdbfScoreDebug noTargetCount path
+// ├── 00120000  sdbfScore and sdbfScoreDebug noTargetCount path
+// └── 00130000  sdbfScoreDebug swap places the larger digest as the target
 //
 // III. CompareDebug interface contract
-// ├── 00130000  CompareDebug nil other returns (0, false)
-// ├── 00140000  CompareDebug foreign Sdbf returns (0, false)
-// └── 00150000  CompareDebug degenerate pair returns (0, false)
+// ├── 00140000  CompareDebug nil other returns (0, false)
+// ├── 00150000  CompareDebug foreign Sdbf returns (0, false)
+// └── 00160000  CompareDebug degenerate pair returns (0, false)
 //
 // IV. CompareDebug toggle combinations (sequential — touches global state)
-// └── 00160000  All four toggle combinations
+// └── 00170000  All four toggle combinations
 //
 // V. score_debug.go C++-faithful path coverage (sequential — touches global state)
-// └── 00170000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
+// └── 00180000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
+//
+// VI. generate_debug.go (NewDebug construction chain — sequential, touches global state)
+// ├── 00190000  NewDebug short buffer returns an error
+// ├── 00200000  NewDebug stream round-trip at default toggles equals New
+// ├── 00210000  NewDebug DD round-trip (multi-block) at default toggles equals New
+// ├── 00220000  generateChunkSdbfDebug multi-chunk goroutine path
+// ├── 00230000  NewDebug with double-count revert equals NewRef
+// ├── 00240000  generateChunkSdbfDebug edge branches
+// ├── 00250000  debug goroutine panic recovery
+// ├── 00260000  populateSdbfDebug error propagation
+// └── 00270000  NewDebug DD remainder block and histogram accumulation
 
 // =========================================================================
 // I. debug.go accessors
@@ -418,12 +430,35 @@ func TestDebug_ScoreDebug_NoTargetCount(t *testing.T) {
 		"sdbfScoreDebug must return -1 when all target filters are sparse (noTargetCount path)")
 }
 
+// ---------------------------------------------------------------------------
+// 00130000  sdbfScoreDebug swap places the larger digest as the target
+// ---------------------------------------------------------------------------
+
+// TestDebug_ScoreDebug_Swap covers the swap block at the top of sdbfScoreDebug,
+// which fires when the first argument has more filters than the second (so the
+// smaller digest becomes the source). Passing the larger digest first must
+// yield the same score as passing the smaller first — the swap makes the
+// comparison order-independent.
+func TestDebug_ScoreDebug_Swap(t *testing.T) {
+	t.Parallel()
+
+	large := streamDigest(t, randomBuf(1<<19, 71, 71)).(*sdbf) // many filters
+	small := streamDigest(t, randomBuf(MinFileSize, 72, 72)).(*sdbf)
+	checkGreater(t, large.bfCount, small.bfCount,
+		"sanity: large digest must have more filters than small digest")
+
+	largeFirst := sdbfScoreDebug(large, small) // triggers the swap
+	smallFirst := sdbfScoreDebug(small, large) // no swap
+	checkEqual(t, smallFirst, largeFirst,
+		"sdbfScoreDebug must be order-independent via the swap block")
+}
+
 // =========================================================================
 // III. CompareDebug interface contract
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00130000  CompareDebug nil other returns (0, false)
+// 00140000  CompareDebug nil other returns (0, false)
 // ---------------------------------------------------------------------------
 
 // TestDebug_CompareDebug_NilOther verifies that CompareDebug returns
@@ -444,7 +479,7 @@ func TestDebug_CompareDebug_NilOther(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00140000  CompareDebug foreign Sdbf returns (0, false)
+// 00150000  CompareDebug foreign Sdbf returns (0, false)
 // ---------------------------------------------------------------------------
 
 // TestDebug_CompareDebug_ForeignOther verifies that CompareDebug returns
@@ -470,7 +505,7 @@ func TestDebug_CompareDebug_ForeignOther(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00150000  CompareDebug degenerate pair returns (0, false)
+// 00160000  CompareDebug degenerate pair returns (0, false)
 // ---------------------------------------------------------------------------
 
 // TestDebug_CompareDebug_DegeneratePair verifies the score < 0 branch inside
@@ -495,7 +530,7 @@ func TestDebug_CompareDebug_DegeneratePair(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00160000  All four toggle combinations
+// 00170000  All four toggle combinations
 // ---------------------------------------------------------------------------
 
 // TestDebug_CompareDebug_AllToggleCombinations exercises all 2^2 = 4
@@ -566,7 +601,6 @@ func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 			case tc.acc && tc.pop:
 				// {Acc=true, Pop=true}: CompareDebug must equal
 				// CompareRef modulo return shape.
-				//goland:noinspection GoDeprecation
 				refScore := a.CompareRef(b)
 				if refScore < 0 {
 					checkTrue(t, !ok,
@@ -589,7 +623,7 @@ func TestDebug_CompareDebug_AllToggleCombinations(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00170000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
+// 00180000  sdbfScoreDebug C++-faithful sparse-source denominator-zero path
 // ---------------------------------------------------------------------------
 
 // TestDebug_ScoreDebug_CppFaithfulSparseSource verifies three statements in
@@ -626,4 +660,294 @@ func TestDebug_ScoreDebug_CppFaithfulSparseSource(t *testing.T) {
 
 	checkEqual(t, -1, sdbfScoreDebug(inner, inner),
 		"sdbfScoreDebug in C++-faithful mode must return -1 when all source filters are sparse")
+}
+
+// =========================================================================
+// VI. generate_debug.go (NewDebug construction chain)
+//
+// Sequential — generateChunkScoresDebug reads DebugRevertChunkScoresDoubleCount,
+// a global toggle. None of these tests call t.Parallel(); the revert test sets
+// the toggle and registers a t.Cleanup to reset it.
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00190000  NewDebug short buffer returns an error
+// ---------------------------------------------------------------------------
+
+// TestDebug_NewDebug_ShortBuffer verifies NewDebug rejects a buffer below the
+// minimum input size, mirroring New.
+func TestDebug_NewDebug_ShortBuffer(t *testing.T) {
+	_, err := NewDebug(make([]byte, MinFileSize-1))
+	checkError(t, err, "NewDebug must error on a buffer shorter than MinFileSize")
+}
+
+// ---------------------------------------------------------------------------
+// 00200000  NewDebug stream round-trip at default toggles equals New
+// ---------------------------------------------------------------------------
+
+// TestDebug_NewDebug_StreamDefaultEqualsNew drives the debug stream chain
+// (NewDebug -> createSdbfDebug -> populateSdbfDebug -> generateChunkSdbfDebug ->
+// generateChunkScoresDebug else-branch) and confirms that at default toggles it
+// reproduces the modern New digest exactly.
+func TestDebug_NewDebug_StreamDefaultEqualsNew(t *testing.T) {
+	buf := randomBuf(1<<19, 21, 21)
+
+	dbgFactory, err := NewDebug(buf)
+	mustNoError(t, err, "NewDebug must accept a valid buffer")
+	dbgSD, err := dbgFactory.Compute()
+	mustNoError(t, err, "debug stream Compute must not error")
+
+	modFactory, err := New(buf)
+	mustNoError(t, err, "New must accept the buffer")
+	modSD, err := modFactory.Compute()
+	mustNoError(t, err, "modern stream Compute must not error")
+
+	checkEqual(t, modSD.String(), dbgSD.String(),
+		"NewDebug at default toggles must equal New (stream)")
+}
+
+// ---------------------------------------------------------------------------
+// 00210000  NewDebug DD round-trip (multi-block) at default toggles equals New
+// ---------------------------------------------------------------------------
+
+// TestDebug_NewDebug_DDDefaultEqualsNew drives the debug block chain
+// (populateSdbfDebug block branch -> generateBlockSdbfDebug ->
+// generateSingleBlockSdbfDebug) with a 1 MiB buffer and 64 KiB blocks (16
+// blocks, parallel pool) and confirms it matches New at default toggles.
+func TestDebug_NewDebug_DDDefaultEqualsNew(t *testing.T) {
+	buf := randomBuf(1<<20, 22, 22)
+
+	dbgFactory, err := NewDebug(buf)
+	mustNoError(t, err, "NewDebug must accept a valid buffer")
+	dbgSD, err := dbgFactory.WithBlockSize(1 << 16).Compute()
+	mustNoError(t, err, "debug DD Compute must not error")
+
+	modFactory, err := New(buf)
+	mustNoError(t, err, "New must accept the buffer")
+	modSD, err := modFactory.WithBlockSize(1 << 16).Compute()
+	mustNoError(t, err, "modern DD Compute must not error")
+
+	checkEqual(t, modSD.String(), dbgSD.String(),
+		"NewDebug at default toggles must equal New (DD)")
+}
+
+// ---------------------------------------------------------------------------
+// 00220000  generateChunkSdbfDebug multi-chunk goroutine path
+// ---------------------------------------------------------------------------
+
+// TestDebug_GenerateChunkSdbfDebug_MultiChunk exercises the parallel goroutine
+// phase of the debug stream path by calling generateChunkSdbfDebug directly
+// with a 1 MiB chunk size and a 3.5 MiB buffer, mirroring the modern and
+// reference multi-chunk tests.
+func TestDebug_GenerateChunkSdbfDebug_MultiChunk(t *testing.T) {
+	const chunkSize = 1 << 20
+	const totalSize = 3*chunkSize + chunkSize/2
+
+	buf := randomBuf(totalSize, 23, 23)
+	sd := newTestSdbf(t)
+	sd.origFileSize = uint64(totalSize)
+
+	mustNoError(t, sd.generateChunkSdbfDebug(buf, chunkSize),
+		"generateChunkSdbfDebug must not error on valid multi-chunk input")
+	sd.computeHamming()
+
+	checkGreater(t, sd.bfCount, uint32(0), "multi-chunk debug digest must have at least one filter")
+	checkEqual(t, 100, sdbfScore(sd, sd), "multi-chunk debug digest must self-compare at 100")
+}
+
+// ---------------------------------------------------------------------------
+// 00230000  NewDebug with double-count revert equals NewRef
+// ---------------------------------------------------------------------------
+
+// TestDebug_NewDebug_RevertEqualsRef sets DebugRevertChunkScoresDoubleCount,
+// exercising the C++-faithful branch of generateChunkScoresDebug, and confirms
+// that NewDebug then reproduces the NewRef digest in both stream and DD modes.
+//
+//goland:noinspection GoDeprecation
+func TestDebug_NewDebug_RevertEqualsRef(t *testing.T) {
+	DebugRevertChunkScoresDoubleCount = true
+	t.Cleanup(func() { DebugRevertChunkScoresDoubleCount = false })
+
+	buf := randomBuf(1<<20, 24, 24)
+
+	// Stream
+	dbgStream, err := NewDebug(buf)
+	mustNoError(t, err, "NewDebug must accept a valid buffer")
+	dbgStreamSD, err := dbgStream.Compute()
+	mustNoError(t, err, "debug revert stream Compute must not error")
+
+	refStream, err := NewRef(buf)
+	mustNoError(t, err, "NewRef must accept a valid buffer")
+	refStreamSD, err := refStream.Compute()
+	mustNoError(t, err, "reference stream Compute must not error")
+
+	checkEqual(t, refStreamSD.String(), dbgStreamSD.String(),
+		"NewDebug with double-count revert must equal NewRef (stream)")
+
+	// DD
+	dbgDD, err := NewDebug(buf)
+	mustNoError(t, err, "NewDebug must accept a valid buffer")
+	dbgDDSD, err := dbgDD.WithBlockSize(1 << 16).Compute()
+	mustNoError(t, err, "debug revert DD Compute must not error")
+
+	refDD, err := NewRef(buf)
+	mustNoError(t, err, "NewRef must accept a valid buffer")
+	refDDSD, err := refDD.WithBlockSize(1 << 16).Compute()
+	mustNoError(t, err, "reference DD Compute must not error")
+
+	checkEqual(t, refDDSD.String(), dbgDDSD.String(),
+		"NewDebug with double-count revert must equal NewRef (DD)")
+}
+
+// ---------------------------------------------------------------------------
+// 00240000  generateChunkSdbfDebug edge branches
+// ---------------------------------------------------------------------------
+
+// TestDebug_GenerateChunkSdbfDebug_Edges covers the single-chunk edge branches
+// of the debug stream path at default toggles: chunk-size guard, qt==1 exact
+// chunk, and both the multi-chunk and single-chunk sparse-last-filter pruning.
+func TestDebug_GenerateChunkSdbfDebug_Edges(t *testing.T) {
+	t.Run("chunk size too small", func(t *testing.T) {
+		buf := randomBuf(MinFileSize, 41, 41)
+		sd := newTestSdbf(t)
+		sd.origFileSize = uint64(MinFileSize)
+		checkError(t, sd.generateChunkSdbfDebug(buf, uint64(popWinSize)),
+			"generateChunkSdbfDebug chunkSize <= popWinSize must return an error")
+	})
+
+	t.Run("exactly one chunk", func(t *testing.T) {
+		const size = 1 << 19
+		buf := randomBuf(size, 42, 42)
+		sd := newTestSdbf(t)
+		sd.origFileSize = uint64(size)
+		mustNoError(t, sd.generateChunkSdbfDebug(buf, size), "generateChunkSdbfDebug must not error")
+		sd.computeHamming()
+		checkEqual(t, 100, sdbfScore(sd, sd), "exactly-one-chunk debug digest must self-compare at 100")
+	})
+
+	t.Run("multi-chunk sparse last filter", func(t *testing.T) {
+		const chunkSize = 10240
+		buf := make([]byte, 2*chunkSize)
+		copy(buf[:chunkSize], randomBuf(chunkSize, 1, 1))
+		sd := newTestSdbf(t)
+		sd.origFileSize = uint64(len(buf))
+		mustNoError(t, sd.generateChunkSdbfDebug(buf, chunkSize), "generateChunkSdbfDebug must not error")
+		sd.computeHamming()
+		checkEqual(t, uint32(1), sd.bfCount, "multi-chunk sparse pruning must reduce bfCount to 1")
+	})
+
+	t.Run("single-chunk sparse last filter", func(t *testing.T) {
+		const size = 20480
+		buf := make([]byte, size)
+		copy(buf[:size/2], randomBuf(size/2, 1, 1))
+		sd := newTestSdbf(t)
+		sd.origFileSize = uint64(size)
+		mustNoError(t, sd.generateChunkSdbfDebug(buf, size), "generateChunkSdbfDebug must not error")
+		sd.computeHamming()
+		checkEqual(t, uint32(1), sd.bfCount, "single-chunk sparse pruning must reduce bfCount to 1")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// 00250000  debug goroutine panic recovery
+// ---------------------------------------------------------------------------
+
+// TestDebug_GenerateSdbfDebug_GoroutinePanicRecovery covers the panicErr paths
+// of both the debug multi-chunk and block goroutine phases.
+func TestDebug_GenerateSdbfDebug_GoroutinePanicRecovery(t *testing.T) {
+	t.Run("chunk", func(t *testing.T) {
+		const chunkSize = 1 << 20
+		buf := randomBuf(4*chunkSize, 100, 100)
+		sd := newTestSdbf(t)
+		sd.origFileSize = uint64(len(buf))
+		sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+		var err error
+		checkNotPanics(t, func() { err = sd.generateChunkSdbfDebug(buf, chunkSize) },
+			"generateChunkSdbfDebug must not propagate a goroutine panic")
+		checkError(t, err, "generateChunkSdbfDebug must return an error when a goroutine panics")
+	})
+
+	t.Run("block", func(t *testing.T) {
+		const ddBlockSize = 1024
+		buf := randomBuf(1<<20, 101, 101)
+		sd := newTestSdbf(t)
+		sd.ddBlockSize = ddBlockSize
+		sd.maxElem = maxElemDd
+		sd.origFileSize = uint64(len(buf))
+		sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+		var err error
+		checkNotPanics(t, func() { err = sd.generateBlockSdbfDebug(buf) },
+			"generateBlockSdbfDebug must not propagate a goroutine panic")
+		checkError(t, err, "generateBlockSdbfDebug must return an error when a goroutine panics")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// 00260000  populateSdbfDebug error propagation
+// ---------------------------------------------------------------------------
+
+// TestDebug_PopulateSdbfDebug_ErrorPropagation covers the stream and block
+// error-propagation branches of populateSdbfDebug and the ddBlockSize guard.
+func TestDebug_PopulateSdbfDebug_ErrorPropagation(t *testing.T) {
+	t.Run("stream", func(t *testing.T) {
+		buf := make([]byte, 33<<20)
+		sd := newTestSdbf(t)
+		sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+		var err error
+		checkNotPanics(t, func() { _, err = populateSdbfDebug(sd, buf, 0) },
+			"populateSdbfDebug must not propagate a goroutine panic")
+		checkError(t, err, "populateSdbfDebug must propagate a stream error")
+	})
+
+	t.Run("block", func(t *testing.T) {
+		const ddBlockSize = 1024
+		buf := randomBuf(4*ddBlockSize, 201, 201)
+		sd := newTestSdbf(t)
+		sd.testFaultHook = func() { panic("injected fault: generateChunkRanks") }
+		var err error
+		checkNotPanics(t, func() { _, err = populateSdbfDebug(sd, buf, ddBlockSize) },
+			"populateSdbfDebug must not propagate a goroutine panic")
+		checkError(t, err, "populateSdbfDebug must propagate a block error")
+	})
+
+	t.Run("block size too small", func(t *testing.T) {
+		buf := randomBuf(MinFileSize, 202, 202)
+		sd := newTestSdbf(t)
+		_, err := populateSdbfDebug(sd, buf, uint32(popWinSize)-1)
+		checkError(t, err, "populateSdbfDebug must error when ddBlockSize < popWinSize")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// 00270000  NewDebug DD remainder block and histogram accumulation
+// ---------------------------------------------------------------------------
+
+// TestDebug_NewDebug_DDEdges covers the trailing remainder-block branch of
+// generateBlockSdbfDebug and the histogram-accumulation loop in
+// generateSingleBlockSdbfDebug.
+func TestDebug_NewDebug_DDEdges(t *testing.T) {
+	t.Run("remainder block", func(t *testing.T) {
+		buf := randomBuf(3*(1<<16)+(1<<15), 33, 33)
+		factory, err := NewDebug(buf)
+		mustNoError(t, err, "NewDebug must accept the buffer")
+		sd, err := factory.WithBlockSize(1 << 16).Compute()
+		mustNoError(t, err, "debug DD remainder Compute must not error")
+		score, ok := sd.Compare(sd)
+		checkEqual(t, true, ok, "debug DD remainder self-compare must be scoreable")
+		checkEqual(t, 100, score, "debug DD remainder digest must self-compare at 100")
+	})
+
+	t.Run("moderate density", func(t *testing.T) {
+		buf := make([]byte, 1<<20)
+		for i := range buf {
+			buf[i] = byte(i % 64)
+		}
+		factory, err := NewDebug(buf)
+		mustNoError(t, err, "NewDebug must accept the buffer")
+		sd, err := factory.WithBlockSize(1 << 16).Compute()
+		mustNoError(t, err, "debug DD moderate-density Compute must not error")
+		if sd.String() == "" {
+			t.Error("moderate-density debug DD digest must be non-empty")
+		}
+	})
 }

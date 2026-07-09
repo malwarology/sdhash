@@ -38,8 +38,8 @@ import (
 // ---------------------------------------------------------------------------
 
 const (
-	corpusCompareStreamAnchor = "cd0522e4f8614ff1bd2d6fefae4b31fc583ef0e22450fbfb612c6175618bb40e"
-	corpusCompareDDAnchor     = "643bfb6c0fbedc972831792cfd44cb1d831dd84f266f3bd331ac489a08d42e32"
+	corpusCompareStreamAnchor = "6cd9b5f8f1f018e6e4d0c5acec011df05de1176c9e61ddde116a0f7a4285cc49"
+	corpusCompareDDAnchor     = "408b519b5115c4b8683fa7ff8f20c5c61c615ab69c63308976ca9be9f7c3090a"
 )
 
 // corpusCompareAnchors holds the two computed anchors.

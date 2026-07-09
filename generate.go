@@ -125,21 +125,13 @@ func (sd *sdbf) generateChunkRanks(fileBuffer []byte, chunkRanks []uint16) {
 // implemented) is the correct lever for throughput.
 func (sd *sdbf) generateChunkScores(chunkRanks []uint16, chunkSize uint64, chunkScores []uint16, scoreHistogram []int32) {
 	popWin := uint64(sd.popWinSize)
-	var minPos uint64
-	minRank := chunkRanks[minPos]
 
+	// For each window, select one position: the minimum nonzero rank, breaking
+	// ties by the rightmost element of the first consecutive run of that value.
+	// Each window increments exactly one position.
 	for i := uint64(0); chunkSize > popWin && i < chunkSize-popWin; i++ {
-		if i > 0 && minRank > 0 {
-			for i < chunkSize-popWin && i < minPos && chunkRanks[i+popWin] >= minRank {
-				if chunkRanks[i+popWin] == minRank {
-					minPos = i + popWin
-				}
-				chunkScores[minPos]++
-				i++
-			}
-		}
-		minPos = i
-		minRank = chunkRanks[minPos]
+		minPos := i
+		minRank := chunkRanks[minPos]
 		for j := i + 1; j < i+popWin; j++ {
 			if chunkRanks[j] < minRank && chunkRanks[j] > 0 {
 				minRank = chunkRanks[j]
