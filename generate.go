@@ -49,6 +49,30 @@ func putChunkSlice(s []uint16) {
 	chunkSlicePool.Put(&s)
 }
 
+// indexSlicePool reuses []int32 backing arrays for the generateChunkScores
+// runEnd scratch, avoiding a per-chunk allocation proportional to chunk size.
+var indexSlicePool = sync.Pool{
+	New: func() any {
+		return (*[]int32)(nil)
+	},
+}
+
+// getIndexSlice returns a []int32 of the given length, reusing a pooled backing
+// array when one large enough is available. Contents are not cleared; the
+// caller fully overwrites the slice.
+func getIndexSlice(size int) []int32 {
+	if v := indexSlicePool.Get(); v != nil {
+		if sp := v.(*[]int32); sp != nil && cap(*sp) >= size {
+			return (*sp)[:size]
+		}
+	}
+	return make([]int32, size)
+}
+
+func putIndexSlice(s []int32) {
+	indexSlicePool.Put(&s)
+}
+
 // asciiPool reuses the 256-byte frequency table used by generateChunkRanks.
 // The allocation is small but called per-chunk, so pooling it reduces GC scan
 // pressure on high-throughput workloads.
@@ -89,63 +113,99 @@ func (sd *sdbf) generateChunkRanks(fileBuffer []byte, chunkRanks []uint16) {
 	}
 }
 
-// generateChunkScores generates scores for each position in a ranked chunk
-// using a sliding minimum window.
+// generateChunkScores records one selected feature position per sliding window
+// in chunkScores. It runs in O(n); see the inline comments for the selection
+// rule and the deque construction.
 //
-// OPTIMIZATION HISTORY: This function is 50% of total CPU time. Three
-// approaches to reduce that cost were evaluated and all failed:
+// OPTIMIZATION HISTORY: the function was previously an O(n*popWin) per-window
+// rescan. Two attempts to speed that rescan up by eliminating bounds checks
+// were evaluated, both without measurable effect:
 //
-//  1. BCE via re-slicing inputs at function entry: no effect. The compiler
-//     cannot prove i+popWin < chunkSize because popWin is a runtime value.
+//  1. Re-slicing the inputs at function entry to hint bounds-check elimination:
+//     no effect. The compiler cannot prove the window index stays in range
+//     because popWin is a runtime value.
 //
-//  2. BCE via range over sub-slices in the j-loop: reduced check count for
-//     that loop but had no measurable effect on runtime. The hot checks —
-//     chunkRanks[i+popWin] in the inner while-loop and chunkRanks[minPos] /
-//     chunkScores[minPos] — are structurally unreachable by BCE because
-//     minPos is assigned inside loop bodies and i mutates inside the inner
-//     while body.
+//  2. Ranging over sub-slices in the inner loop: reduced the static check count
+//     but did not change runtime; the hot accesses were structurally
+//     unreachable by BCE because the selected index was assigned inside the
+//     loop body.
 //
-//  3. Algorithmic replacement with a monotonic deque O(n) sliding window
-//     minimum: ruled out. The original algorithm is not a pure sliding
-//     window minimum — the inner while-loop reuses the previous window's
-//     minPos and scores it incrementally, producing different minPos
-//     assignments than a deque. The corpus tests (digest-exact match against
-//     C++ reference) would fail. Additionally, the algorithm is already
-//     O(n) amortized on real entropy data because the inner while
-//     fast-forwards i until the minimum expires.
-//
-// INSTRUCTION-LEVEL PROFILING (pprof Source view) confirmed the remaining
-// cost is irreducible algorithmic work. 81% of this function's flat time
-// (470s of 580s) is in the j-loop: the for-j iteration, the two rank
-// comparisons, and the equality branch. The flat-to-cum gap per line is
-// 1–5%, meaning almost no time is spent in bounds-check panic paths. Even
-// total elimination of bounds checks would save at most ~5% of this function.
-//
-// This is the performance floor. Parallelism at the file level (already
-// implemented) is the correct lever for throughput.
+// The rescan's cost was genuine algorithmic work, not bounds-check overhead, so
+// it was replaced by the current monotonic-deque implementation rather than
+// micro-optimized.
 func (sd *sdbf) generateChunkScores(chunkRanks []uint16, chunkSize uint64, chunkScores []uint16, scoreHistogram []int32) {
-	popWin := uint64(sd.popWinSize)
+	popWin := int(sd.popWinSize)
+	n := int(chunkSize)
 
 	// For each window, select one position: the minimum nonzero rank, breaking
-	// ties by the rightmost element of the first consecutive run of that value.
-	// Each window increments exactly one position.
-	for i := uint64(0); chunkSize > popWin && i < chunkSize-popWin; i++ {
-		minPos := i
-		minRank := chunkRanks[minPos]
-		for j := i + 1; j < i+popWin; j++ {
-			if chunkRanks[j] < minRank && chunkRanks[j] > 0 {
-				minRank = chunkRanks[j]
-				minPos = j
-			} else if minPos == j-1 && chunkRanks[j] == minRank {
-				minPos = j
+	// ties by the rightmost element of the first consecutive run of that value;
+	// increment that position once (windows whose left edge is zero contribute
+	// nothing). Implemented in O(n): a runEnd precompute plus a monotonic deque
+	// whose front is the leftmost minimum-nonzero position of the window.
+	if n > popWin {
+		// runEnd[k] = last index of the maximal consecutive equal-value run
+		// that starts at k. Clipped to the window, runEnd[front] gives the
+		// rightmost element of the first run of the minimum value.
+		runEnd := getIndexSlice(n)
+		defer putIndexSlice(runEnd)
+		runEnd[n-1] = int32(n - 1)
+		for k := n - 2; k >= 0; k-- {
+			if chunkRanks[k] == chunkRanks[k+1] {
+				runEnd[k] = runEnd[k+1]
+			} else {
+				runEnd[k] = int32(k)
 			}
 		}
-		if chunkRanks[minPos] > 0 {
-			chunkScores[minPos]++
+
+		// Monotonic deque as a fixed ring buffer. Values are strictly increasing
+		// front-to-back (equal values keep the leftmost at the front), holding
+		// only nonzero positions, so the front is the leftmost minimum-nonzero.
+		// dqCap is a power of two >= popWinSize+2: the window transiently holds
+		// popWin+1 entries, and masking replaces modular arithmetic.
+		const dqCap = 128
+		const dqMask = dqCap - 1
+		var ring [dqCap]int32
+		h, tail := 0, 0
+
+		// Seed the deque with the first window [0, popWin).
+		for j := 0; j < popWin; j++ {
+			if chunkRanks[j] == 0 {
+				continue
+			}
+			for h != tail && chunkRanks[ring[(tail-1)&dqMask]] > chunkRanks[j] {
+				tail = (tail - 1) & dqMask
+			}
+			ring[tail] = int32(j)
+			tail = (tail + 1) & dqMask
+		}
+
+		numWindows := n - popWin
+		for i := 0; i < numWindows; i++ {
+			// Drop front indices that have fallen out of the window.
+			for h != tail && int(ring[h]) < i {
+				h = (h + 1) & dqMask
+			}
+			if chunkRanks[i] != 0 && h != tail {
+				minPos := runEnd[ring[h]]
+				if int(minPos) > i+popWin-1 {
+					minPos = int32(i + popWin - 1)
+				}
+				chunkScores[minPos]++
+			}
+			// Admit the incoming right-edge index for the next window.
+			if r := i + popWin; r < n && chunkRanks[r] != 0 {
+				for h != tail && chunkRanks[ring[(tail-1)&dqMask]] > chunkRanks[r] {
+					tail = (tail - 1) & dqMask
+				}
+				ring[tail] = int32(r)
+				tail = (tail + 1) & dqMask
+			}
 		}
 	}
+
 	if scoreHistogram != nil {
-		for i := uint64(0); i < chunkSize-popWin; i++ {
+		popWinU := uint64(sd.popWinSize)
+		for i := uint64(0); i < chunkSize-popWinU; i++ {
 			scoreHistogram[chunkScores[i]]++
 		}
 	}
