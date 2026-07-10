@@ -283,7 +283,7 @@ func TestConcurrent_ComputeMultiple(t *testing.T) {
 // 00120000  Concurrent compare
 // ---------------------------------------------------------------------------
 
-func TestConcurrent_Compare(t *testing.T) {
+func TestConcurrent_Similarity(t *testing.T) {
 	t.Parallel()
 	buf1 := randomBuf(1<<20, 1, 1)
 	buf2 := randomBuf(1<<20, 1, 1) // same seed → same data → score 100
@@ -636,7 +636,7 @@ func TestGenerateBlockSdbf_GoroutinePanicRecovery(t *testing.T) {
 // 00250000  Parse error cases
 // ---------------------------------------------------------------------------
 
-func TestParseSdbf_ErrorCases(t *testing.T) {
+func TestParse_ErrorCases(t *testing.T) {
 	t.Parallel()
 
 	validB64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
@@ -681,10 +681,10 @@ func TestParseSdbf_ErrorCases(t *testing.T) {
 // 00260000  Parse stream without trailing newline
 // ---------------------------------------------------------------------------
 
-// TestParseSdbf_StreamWithoutTrailingNewline verifies that a digest string
+// TestParse_StreamWithoutTrailingNewline verifies that a digest string
 // with the trailing '\n' stripped parses identically to the newline-terminated
 // form.
-func TestParseSdbf_StreamWithoutTrailingNewline(t *testing.T) {
+func TestParse_StreamWithoutTrailingNewline(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 1, 1)
 	sd := streamDigest(t, buf)
@@ -817,10 +817,10 @@ func TestParseReader_MultipleDigests(t *testing.T) {
 // 00330000  Parse stream with Windows line ending
 // ---------------------------------------------------------------------------
 
-// TestParseSdbf_StreamWithWindowsLineEnding verifies that a stream digest
+// TestParse_StreamWithWindowsLineEnding verifies that a stream digest
 // string with a Windows-style '\r\n' line ending parses correctly and
 // round-trips identically to the canonical '\n'-terminated form.
-func TestParseSdbf_StreamWithWindowsLineEnding(t *testing.T) {
+func TestParse_StreamWithWindowsLineEnding(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 95, 95)
 	sd := streamDigest(t, buf)
@@ -842,10 +842,10 @@ func TestParseSdbf_StreamWithWindowsLineEnding(t *testing.T) {
 // 00340000  Parse DD with Windows line ending
 // ---------------------------------------------------------------------------
 
-// TestParseSdbf_DDWithWindowsLineEnding verifies that a DD digest string
+// TestParse_DDWithWindowsLineEnding verifies that a DD digest string
 // with a Windows-style '\r\n' line ending parses correctly and round-trips
 // identically to the canonical '\n'-terminated form.
-func TestParseSdbf_DDWithWindowsLineEnding(t *testing.T) {
+func TestParse_DDWithWindowsLineEnding(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 96, 96)
 	sd := ddDigest(t, buf, 65536)

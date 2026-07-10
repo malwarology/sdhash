@@ -455,11 +455,11 @@ func TestIssue15_DDParseWithoutTrailingNewline(t *testing.T) {
 // 00150000  Similarity with nil Digest returns -1
 // ---------------------------------------------------------------------------
 
-// TestIssue17_CompareNilSdbf verifies that calling Similarity with a nil Digest
+// TestIssue17_SimilarityNilDigest verifies that calling Similarity with a nil Digest
 // argument returns -1 instead of panicking. Without a nil guard inside
 // Similarity, passing nil causes a nil-pointer dereference when the
 // implementation attempts to access the argument's fields.
-func TestIssue17_CompareNilSdbf(t *testing.T) {
+func TestIssue17_SimilarityNilDigest(t *testing.T) {
 	t.Parallel()
 
 	buf := randomBuf(1<<20, 80, 80)
@@ -477,7 +477,7 @@ func TestIssue17_CompareNilSdbf(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // foreignDigestImpl is a minimal Digest implementation used only by
-// TestIssue17_CompareForeignImpl. It satisfies the Digest interface but is not
+// TestIssue17_SimilarityForeignImpl. It satisfies the Digest interface but is not
 // the internal *sdbf type, so a type-assertion guard inside Similarity must
 // handle it gracefully rather than panicking.
 type foreignDigestImpl struct{}
@@ -489,12 +489,12 @@ func (f *foreignDigestImpl) Similarity(Digest) (int, bool) { return 0, false }
 func (f *foreignDigestImpl) String() string                { return "" }
 func (f *foreignDigestImpl) FeatureDensity() float64       { return 0 }
 
-// TestIssue17_CompareForeignImpl verifies that calling Similarity with a foreign
+// TestIssue17_SimilarityForeignImpl verifies that calling Similarity with a foreign
 // Digest implementation — one that satisfies the interface but is not the
 // internal *sdbf type — returns -1 instead of panicking. Without a type-assertion
 // guard inside Similarity, a type assertion to *sdbf on the foreign
 // value panics at runtime.
-func TestIssue17_CompareForeignImpl(t *testing.T) {
+func TestIssue17_SimilarityForeignImpl(t *testing.T) {
 	t.Parallel()
 
 	buf := randomBuf(1<<20, 81, 81)

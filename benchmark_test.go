@@ -90,9 +90,9 @@ func BenchmarkParse(b *testing.B) {
 	}
 }
 
-// BenchmarkCompare measures a single pairwise similarity score for stream and
+// BenchmarkSimilarity measures a single pairwise similarity score for stream and
 // DD digests.
-func BenchmarkCompare(b *testing.B) {
+func BenchmarkSimilarity(b *testing.B) {
 	sa := mustDigest(b, randomBuf(benchMid, 5, 5), 0)
 	sb := mustDigest(b, randomBuf(benchMid, 6, 6), 0)
 	da := mustDigest(b, randomBuf(benchMid, 5, 5), benchBlock)
