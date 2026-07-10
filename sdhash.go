@@ -185,6 +185,36 @@ func readField(r *bufio.Reader) (string, error) {
 	return s[:len(s)-1], nil
 }
 
+// errBoundExceeded is returned by readBoundedString when delim is not found
+// within maxLen bytes.
+var errBoundExceeded = errors.New("read exceeded expected length without finding delimiter")
+
+// readBoundedString reads from r, one byte at a time, until delim is found
+// or maxLen bytes have been consumed, whichever comes first. It mirrors
+// bufio.Reader.ReadString but caps the number of bytes it will ever buffer.
+//
+// This intentionally avoids wrapping r in a second bufio.Reader (e.g. via
+// io.LimitReader): doing so lets the inner reader pre-fetch bytes from r
+// into its own buffer that are never consumed if the delimiter is found
+// early, and those bytes are silently lost on the next call. Reading
+// directly from r one byte at a time keeps a single buffering layer, so
+// nothing is dropped between calls, while still bounding worst-case memory
+// use to maxLen regardless of what the underlying stream sends.
+func readBoundedString(r *bufio.Reader, delim byte, maxLen int) (string, error) {
+	var sb strings.Builder
+	for i := 0; i < maxLen; i++ {
+		b, err := r.ReadByte()
+		if err != nil {
+			return sb.String(), err
+		}
+		sb.WriteByte(b)
+		if b == delim {
+			return sb.String(), nil
+		}
+	}
+	return sb.String(), errBoundExceeded
+}
+
 // readUint64Field reads a colon-terminated field from r and parses it as a decimal uint64.
 func readUint64Field(r *bufio.Reader) (uint64, error) {
 	s, err := readField(r)
@@ -282,7 +312,13 @@ func ParseReader(reader io.Reader) (Digest, error) {
 			return nil, fmt.Errorf("failed to read last count: %w", err)
 		}
 		// Buffer is base64-encoded and terminated by '\r\n', '\n', or EOF.
-		encodedBuffer, _ := r.ReadString('\n')
+		// bfCount and bfSize are already validated against maxBfAlloc above.
+		// Cap this read at the expected encoded length, plus a couple of
+		// bytes of slack for the line terminator. This avoids letting
+		// ReadString buffer an attacker-controlled line of unbounded length
+		// before any size check runs.
+		expectedEncodedLen := base64.StdEncoding.EncodedLen(int(bfCount * bfSize))
+		encodedBuffer, _ := readBoundedString(r, '\n', expectedEncodedLen+2)
 		encodedBuffer = strings.TrimRight(encodedBuffer, "\r\n")
 		if sd.buffer, err = base64.StdEncoding.DecodeString(encodedBuffer); err != nil {
 			return nil, fmt.Errorf("failed to decode buffer: %w", err)
@@ -305,6 +341,7 @@ func ParseReader(reader io.Reader) (Digest, error) {
 		}
 		sd.elemCounts = make([]uint16, bfCount)
 		sd.buffer = make([]byte, bfCount*bfSize)
+		expectedLen := base64.StdEncoding.EncodedLen(bfSize)
 		for i := range bfCount {
 			elemStr, err := readField(r)
 			if err != nil {
@@ -319,8 +356,12 @@ func ParseReader(reader io.Reader) (Digest, error) {
 				return nil, fmt.Errorf("element count %d for filter %d exceeds maxElem %d", elem, i, maxElem)
 			}
 
-			// Each block's base64 is delimited by ':' except the last, which ends at '\r\n', '\n', or EOF.
-			encodedBuffer, readErr := r.ReadString(':')
+			// Each block's base64 is delimited by ':' except the last, which ends
+			// at '\r\n', '\n', or EOF. expectedLen is a fixed constant (derived
+			// from bfSize, not attacker data), so bound the read to it plus a
+			// couple of bytes of slack for the delimiter/line terminator instead
+			// of letting ReadString buffer an unbounded run with no ':' or '\n'.
+			encodedBuffer, readErr := readBoundedString(r, ':', expectedLen+2)
 			var encodedStr string
 			if readErr != nil {
 				encodedStr = strings.TrimRight(encodedBuffer, "\r\n")
@@ -328,7 +369,6 @@ func ParseReader(reader io.Reader) (Digest, error) {
 				encodedStr = encodedBuffer[:len(encodedBuffer)-1]
 			}
 
-			expectedLen := base64.StdEncoding.EncodedLen(bfSize)
 			if len(encodedStr) != expectedLen {
 				return nil, fmt.Errorf("encoded block %d length %d does not match expected %d", i, len(encodedStr), expectedLen)
 			}
