@@ -482,12 +482,12 @@ func TestIssue17_CompareNilSdbf(t *testing.T) {
 // handle it gracefully rather than panicking.
 type foreignDigestImpl struct{}
 
-func (f *foreignDigestImpl) FilterSize() uint64       { return 0 }
-func (f *foreignDigestImpl) InputSize() uint64        { return 0 }
-func (f *foreignDigestImpl) FilterCount() uint32      { return 0 }
+func (f *foreignDigestImpl) FilterSize() uint64            { return 0 }
+func (f *foreignDigestImpl) InputSize() uint64             { return 0 }
+func (f *foreignDigestImpl) FilterCount() uint32           { return 0 }
 func (f *foreignDigestImpl) Similarity(Digest) (int, bool) { return 0, false }
-func (f *foreignDigestImpl) String() string           { return "" }
-func (f *foreignDigestImpl) FeatureDensity() float64  { return 0 }
+func (f *foreignDigestImpl) String() string                { return "" }
+func (f *foreignDigestImpl) FeatureDensity() float64       { return 0 }
 
 // TestIssue17_CompareForeignImpl verifies that calling Similarity with a foreign
 // Digest implementation — one that satisfies the interface but is not the
