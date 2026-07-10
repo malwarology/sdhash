@@ -39,17 +39,25 @@
 // # C++ reference compatibility
 //
 // CompareRef provides a scoring path that reproduces the exact behavior of
-// the C++ sdhash reference implementation, including three intentional
-// divergences from Compare: a staged early-exit heuristic in the
-// AND-popcount calculation, conditional score accumulation semantics, and
-// the single-int return convention with -1 as a degenerate sentinel.
+// the C++ sdhash reference implementation. It differs from Compare in two
+// scoring behaviors — a staged early-exit heuristic in the AND-popcount
+// calculation and conditional score-accumulation semantics — and in its
+// return convention: a single int with -1 as a degenerate sentinel, versus
+// Compare's (score, ok).
+//
+// The modern construction path also diverges from the reference: New fixes
+// a sliding-window feature-selection double-count on equal-rank runs that
+// the C++ digester exhibits (issue #57), which changes digest output. NewRef
+// reproduces the C++ construction byte-for-byte, so full C++ parity requires
+// NewRef digests scored with CompareRef.
 //
 // CompareRef exists for cross-validation against C++ reference output and
 // for comparing digests originally produced by the C++ implementation.
 // For all new work, prefer Compare which returns (score, ok).
 //
-// CompareRef will be removed in a future major release. See the README
-// for migration guidance.
+// NewRef and CompareRef are part of the C++ reference-compatibility surface,
+// frozen at v0.6.0 and removed in v1.0.0. Pin to v0.6.0 to retain them; see
+// the README for migration guidance.
 //
 // # Concurrency
 //

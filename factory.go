@@ -89,12 +89,13 @@ func New(buffer []byte) (SdbfFactory, error) {
 
 // NewRef returns a factory that produces a Sdbf using the C++-reference-
 // compatible construction path (the pre-fix chunk-score feature selection).
-// It is the construction-side analogue of CompareRef: it exists during the
-// reference correctness phase so external harnesses can compare the Go
-// library's digests byte-for-byte against the C++ reference via CSV diffing.
+// It is the construction-side analogue of CompareRef: it was built during
+// the reference-correctness phase so external harnesses could compare the
+// Go library's digests byte-for-byte against the C++ reference.
 //
-// Deprecated: NewRef will be removed when C++ reference compatibility is
-// dropped at 1.0.0. New code should use New, which produces the modern digest.
+// Deprecated: NewRef is part of the C++ reference-compatibility surface,
+// frozen at v0.6.0 and removed in v1.0.0. Pin to v0.6.0 to retain it. New
+// code should use New, which produces the modern digest.
 //
 //goland:noinspection GoDeprecation
 func NewRef(buffer []byte) (SdbfFactory, error) {

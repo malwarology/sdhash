@@ -1,8 +1,7 @@
 // Package-internal file: contains the C++-reference-compatible scoring path.
 // These functions reproduce the C++ sdhash reference implementation's
-// scoring behavior exactly, for use during the Go port's reference
-// correctness phase. They are scheduled for removal at 1.0.0 when C++
-// reference compatibility is dropped.
+// scoring behavior exactly. This file is part of the C++
+// reference-compatibility surface, frozen at v0.6.0 and removed in v1.0.0.
 //
 // Modifications to this file warrant extra review. The byte-identity
 // of CompareRef's output against the C++ reference across millions of

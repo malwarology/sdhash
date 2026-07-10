@@ -8,21 +8,31 @@ This work is based on the original Go implementation by [Emiliano Ciavatta](http
 
 ## Correctness
 
-Digest generation has been verified against the C++ reference
-implementation using a 103,000-file corpus. All 103,000 digests match in
-both stream and DD modes.
+Both digest construction and scoring have been validated against the C++
+sdhash reference implementation. The reference-compatible construction
+(`NewRef`) reproduces C++ digests byte-for-byte across the normal corpus
+of 66,020 files spanning 23 file-type categories, in both stream and DD
+modes. The reference-compatible scoring (`CompareRef`) was cross-validated
+across 2,860,832 pair comparisons — every ordered pair of the 1,196-file
+mixedbag corpus, in both stream and DD modes — with zero unexplained
+divergences.
 
-Scoring has been cross-validated across 2,880,000 pair comparisons
-(1,200 files × 1,200 files, both stream and DD modes) with zero
-unexplained divergences. Two systematic differences between the Go and
-C++ scoring paths were identified, root-caused, and reproduced:
+The modern path (`New` and `Compare`) diverges from the C++ reference in
+three material ways, each identified, root-caused, and reproduced. Two are
+in scoring; the third is in construction — it changes digest output, so
+its effect is exhibited and measured in the scores:
 
-1. **Staged early-exit** — the C++ AND-popcount uses a staged heuristic
-   that can reject filter pairs early. `Compare` uses exact full
+1. **Staged early-exit** (scoring) — the C++ AND-popcount uses a staged
+   heuristic that can reject filter pairs early. `Compare` uses exact full
    popcount; `CompareRef` reproduces the C++ heuristic.
-2. **Score accumulation** — the C++ reference uses conditional assignment
-   on the first iteration. `Compare` uses straightforward addition;
-   `CompareRef` reproduces the C++ pattern.
+2. **Score accumulation** (scoring) — the C++ reference uses conditional
+   assignment on the first iteration. `Compare` uses straightforward
+   addition; `CompareRef` reproduces the C++ pattern.
+3. **Chunk-score double-count** (construction) — the C++ sliding-window
+   feature selector double-counts positions on runs of equal ranks
+   (issue #57). `New` increments exactly one position per window; `NewRef`
+   reproduces the C++ double-count. Over the 1,196-file mixedbag corpus
+   this shifts scores on 9.855% of pairs, overwhelmingly by small margins.
 
 ## Installation
 
@@ -309,10 +319,12 @@ This three-step pattern — crypto hash for identity, sdhash for similarity, den
 ## C++ reference compatibility
 
 This implementation has been cross-validated against the C++ sdhash
-reference implementation across 2,880,000 pair comparisons (1,200 files ×
-1,200 files, both stream and DD modes) with zero unexplained divergences.
+reference implementation across 2,860,832 pair comparisons — every
+ordered pair of the 1,196-file mixedbag corpus, in both stream and DD
+modes — with zero unexplained divergences.
 
-The standard `Compare` method improves on the C++ scoring in two ways:
+The modern path improves on the C++ reference in three ways — two in
+scoring (via `Compare`) and one in construction (via `New`):
 
 1. **Full popcount.** The C++ implementation uses a staged early-exit
    heuristic (`bf_bitcount_cut_256` with `slack=48`) that can reject
@@ -328,16 +340,31 @@ The standard `Compare` method improves on the C++ scoring in two ways:
    negative. `Compare` uses straightforward addition, which is simpler
    and does not mask degenerate filter results.
 
-`CompareRef` reproduces the exact C++ behavior for both of these, plus
-the single-int return convention with -1 as a sentinel. Use it when you
-need exact score parity with the C++ tool or when working with digests
-originally produced by the C++ implementation.
+3. **Single-count feature selection.** The C++ sliding-window selector
+   double-counts positions on runs of equal ranks: a position can be
+   incremented by both the fast-forward block and the rescan tail of
+   overlapping windows, a distribution no correct per-window minimum
+   produces (issue #57). `New` selects one position per window — the
+   minimum nonzero rank, rightmost of the first consecutive run — and
+   increments it exactly once. Because this changes digest output, its
+   effect appears in scores: over the 1,196-file mixedbag corpus, scoring
+   disagrees with the C++ reference on 9.855% of pairs, of which about
+   3.3% is off-by-one rounding and the substantive remainder is
+   overwhelmingly small-magnitude (2–5) with a fast-descending tail, and
+   no pair where the reference scored a comparison the modern path
+   rejected.
+
+`NewRef` reproduces the exact C++ construction (including the
+double-count), and `CompareRef` reproduces the exact C++ scoring (both
+heuristics above) plus the single-int return convention with -1 as a
+sentinel. Use them when you need exact parity with the C++ tool or when
+working with digests originally produced by the C++ implementation.
 
 ### Deprecation plan
 
-`CompareRef` and its underlying scoring functions will be removed in the
-next release. If you need C++ reference-compatible scoring after that
-point, pin your dependency to this release.
+`CompareRef` and its underlying scoring functions are removed in v1.0.0.
+If you need C++ reference-compatible scoring after that point, pin your
+dependency to v0.6.0.
 
 ## Concurrency
 
@@ -362,26 +389,40 @@ go test -race -count=1 ./...
 go test -count=1 -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
 ```
 
-The test suite achieves 100% statement coverage. It includes regression tests for known issues verified against the C++ reference implementation output.
+The default suite achieves 100% statement coverage. It includes regression
+tests for known issues verified against the C++ reference implementation.
 
-### Corpus validation
+### Deterministic corpus anchors
 
-The hash corpus test validates digest generation against reference CSVs
-covering 103,000 files:
-
-```bash
-go test -tags corpus -timeout 60m -count=1 ./...
-```
-
-### C++ compatibility validation
-
-The compat test validates `CompareRef` against C++ reference scoring
-across 2,880,000 pair comparisons:
+Two heavier tests lock digest generation and scoring against deterministic
+SHA-256 anchors. Neither ships reference data — each regenerates its corpus
+in-process from a fixed seed, so any drift in generation, computation, or
+the captured per-row fields changes the anchor and fails the test.
 
 ```bash
-go test -tags compat -run TestCompat -timeout 30m -count=1 ./...
+# Digest-generation anchor (normal corpus, stream + DD)
+go test -tags corpushash -run TestCorpusHash -timeout=0 -count=1 ./...
+
+# Modern-scoring anchor (mixedbag corpus, all ordered pairs, stream + DD)
+go test -tags corpuscompare -run TestCorpusCompare -timeout=0 -count=1 ./...
 ```
 
-Both corpus tests are run on push to main in CI. They are not included
-in the default test suite because they require large reference datasets
-and take several minutes to complete.
+`corpushash` regenerates the normal corpus (66,020 files across 23
+categories, PCG stream 0) and folds the same per-digest statistics
+`sdhashtest` emits in its corpushash mode into one anchor. `corpuscompare`
+regenerates the mixedbag corpus (1,196 files, PCG stream 1), scores every
+ordered pair including self-pairs with `Compare`, and folds the per-pair
+fields into one anchor per mode. Both run in CI on push to main; they are
+excluded from the default suite because they take several minutes.
+
+### C++ reference compatibility
+
+Parity with the C++ reference was established out-of-repo by the
+`sdhashtest` harness driving the `NewRef` / `CompareRef` surface: digest
+generation matched across the 66,020-file normal corpus in both modes, and
+scoring was cross-validated across 2,860,832 pair comparisons (every
+ordered pair of the 1,196-file mixedbag corpus, both modes) with zero
+unexplained divergences. **v0.6.0 is the frozen tag at which that
+validation can be reproduced, and the last release carrying the
+reference-compatibility surface.** See the C++ reference compatibility
+section above for what remains and the pinning guidance.

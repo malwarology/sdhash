@@ -1,9 +1,6 @@
 // This file provides package-level accessors into the private state of
-// the sdbf type for use by the reference-correctness test harness.
-// These accessors are transient: they exist to support the
-// cross-implementation testing methodology during the port and will be
-// removed when that methodology absorbs into the library's formal unit
-// tests.
+// the sdbf type for use by the reference-correctness test harness. It is
+// part of the debug surface, frozen at v0.6.0 and removed in v1.0.0.
 //
 // None of the functions in this file are part of the library's public
 // API. Do not depend on them from outside the test methodology.

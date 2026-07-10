@@ -8,9 +8,8 @@ package sdhash
 // debug.go for the toggle). Used by the handoff test harness to emit modern and
 // reference digests from a single API for CSV comparison.
 //
-// Not part of the public API. This entire file, including NewDebug, will be
-// removed when the reference-correctness methodology absorbs into the formal
-// unit tests.
+// Not part of the public API. This file is part of the debug surface,
+// frozen at v0.6.0 and removed in v1.0.0.
 
 import (
 	"fmt"
@@ -20,6 +19,10 @@ import (
 
 // NewDebug returns a factory that produces a Sdbf using the toggle-gated
 // construction path. See DebugRevertChunkScoresDoubleCount.
+//
+// Deprecated: NewDebug is part of the debug surface, frozen at v0.6.0 and
+// removed in v1.0.0. Pin to v0.6.0 to retain it. New code should use New,
+// which produces the modern digest.
 func NewDebug(buffer []byte) (SdbfFactory, error) {
 	if len(buffer) < MinFileSize {
 		return nil, fmt.Errorf("buffer length must be at least %d bytes", MinFileSize)

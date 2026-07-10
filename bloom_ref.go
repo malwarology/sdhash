@@ -1,8 +1,9 @@
 // Package-internal file: contains the C++-reference-compatible bloom filter
 // popcount primitive. The andPopcountCut function implements the staged
 // early-exit heuristic used by the C++ sdhash reference, called only from
-// the reference scoring path (sdbfMaxScoreRef). It is scheduled for removal
-// at 1.0.0 when C++ reference compatibility is dropped.
+// the reference scoring path (sdbfMaxScoreRef). This file is part of the
+// C++ reference-compatibility surface, frozen at v0.6.0 and removed in
+// v1.0.0.
 //
 // Modifications to this file warrant extra review.
 

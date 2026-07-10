@@ -3,8 +3,8 @@
 // helpers exist to support empirical A/B comparison of individual
 // scoring fixes. Not part of the library's public scoring API.
 //
-// Scheduled for removal together with the other debug machinery when
-// the reference correctness phase completes.
+// This file is part of the debug surface, frozen at v0.6.0 and removed in
+// v1.0.0.
 //
 // Modifications to this file are expected during the investigation.
 // Unlike score_ref.go, this file is not frozen.
@@ -152,9 +152,11 @@ func sdbfMaxScoreDebug(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64
 //
 // This function is used exclusively for the handoff scoring
 // investigation and for demonstrations. It is not part of the
-// library's public scoring API and will be removed together with
-// the other debug machinery when the reference correctness phase
-// completes.
+// library's public scoring API.
+//
+// Deprecated: CompareDebug is part of the debug surface, frozen at
+// v0.6.0 and removed in v1.0.0. Pin to v0.6.0 to retain it. It is an
+// A/B demonstration tool with no public replacement; use Compare.
 func CompareDebug(s1, s2 Sdbf) (int, bool) {
 	if s1 == nil || s2 == nil {
 		return 0, false

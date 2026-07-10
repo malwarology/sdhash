@@ -9,9 +9,9 @@ package sdhash
 // chain (ranks, hashing, hamming, bloom, goroutine pool) is shared, unchanged,
 // with the modern path.
 //
-// Deprecated: this entire file will be removed when C++ reference compatibility
-// is dropped at 1.0.0. The public entry point NewRef lives beside New in
-// factory.go and is likewise deprecated.
+// This file is part of the C++ reference-compatibility surface, frozen at
+// v0.6.0 and removed in v1.0.0. Its public entry point NewRef lives beside
+// New in factory.go and carries the deprecation notice.
 
 import (
 	"fmt"
