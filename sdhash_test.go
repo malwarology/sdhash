@@ -43,23 +43,25 @@ import (
 // ├── 00220000  generateChunkSdbf exactly one chunk
 // ├── 00230000  generateChunkSdbf multi-chunk sparse last filter
 // ├── 00240000  generateChunkSdbf goroutine panic recovery
-// └── 00250000  generateBlockSdbf goroutine panic recovery
+// ├── 00250000  generateBlockSdbf goroutine panic recovery
+// └── 00260000  generateSingleBlockSdbf zero-threshold k clamp
 //
 // V. sdhash.go
-// ├── 00260000  Parse error cases
-// ├── 00270000  Parse stream without trailing newline
-// ├── 00280000  FeatureDensity zero-filled
-// ├── 00290000  FeatureDensity high entropy
-// ├── 00300000  FeatureDensity DD mode
-// ├── 00310000  FeatureDensity parsed digest
-// ├── 00320000  FeatureDensity zero origFileSize
-// ├── 00330000  ParseReader multiple digests
-// ├── 00340000  Parse stream with Windows line ending
-// └── 00350000  Parse DD with Windows line ending
+// ├── 00270000  Parse error cases
+// ├── 00280000  Parse stream without trailing newline
+// ├── 00290000  FeatureDensity zero-filled
+// ├── 00300000  FeatureDensity high entropy
+// ├── 00310000  FeatureDensity DD mode
+// ├── 00320000  FeatureDensity parsed digest
+// ├── 00330000  FeatureDensity zero origFileSize
+// ├── 00340000  ParseReader multiple digests
+// ├── 00350000  Parse stream with Windows line ending
+// └── 00360000  Parse DD with Windows line ending
 //
 // VI. factory.go
-// ├── 00360000  populateSdbf stream mode error propagation
-// └── 00370000  populateSdbf block mode error propagation
+// ├── 00370000  populateSdbf stream mode error propagation
+// ├── 00380000  populateSdbf block mode error propagation
+// └── 00390000  populateSdbf block mode allocation cap
 
 // =========================================================================
 // I. General
@@ -665,12 +667,47 @@ func TestGenerateBlockSdbf_GoroutinePanicRecovery(t *testing.T) {
 	checkError(t, err, "generateBlockSdbf must return an error when a goroutine panics")
 }
 
+// ---------------------------------------------------------------------------
+// 00260000  generateSingleBlockSdbf zero-threshold k clamp
+// ---------------------------------------------------------------------------
+
+// TestGenerateSingleBlockSdbf_ZeroThresholdClamp verifies that
+// generateSingleBlockSdbf does not panic when threshold is 0, and that k is
+// clamped to 0 rather than left at -1 before being converted back to a
+// uint32 argument for generateBlockHash.
+//
+// threshold is always the package constant 16 in production; this exercises
+// defensive hardening for a value that is not currently reachable.
+//
+// Construction: a 128-byte block (2x popWinSize) keeps the total number of
+// scored windows (blockSize - popWinSize = 64) comfortably under maxElemDd
+// (192), so the sum-vs-maxElem break in the k loop never fires and the loop
+// runs all the way down to -1, guaranteeing the clamp branch executes.
+func TestGenerateSingleBlockSdbf_ZeroThresholdClamp(t *testing.T) {
+	t.Parallel()
+
+	const ddBlockSize = 128
+	sd := newTestSdbf(t)
+	sd.ddBlockSize = ddBlockSize
+	sd.maxElem = maxElemDd
+	sd.threshold = 0
+	sd.buffer = make([]byte, uint64(sd.bfCount)*uint64(sd.bfSize))
+	sd.elemCounts = make([]uint16, sd.bfCount)
+
+	fileBuffer := randomBuf(ddBlockSize, 102, 102)
+
+	checkNotPanics(t,
+		func() { sd.generateSingleBlockSdbf(fileBuffer, 0) },
+		"generateSingleBlockSdbf must not panic when threshold is 0",
+	)
+}
+
 // =========================================================================
 // V. sdhash.go
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00260000  Parse error cases
+// 00270000  Parse error cases
 // ---------------------------------------------------------------------------
 
 func TestParse_ErrorCases(t *testing.T) {
@@ -722,7 +759,7 @@ func TestParse_ErrorCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00270000  Parse stream without trailing newline
+// 00280000  Parse stream without trailing newline
 // ---------------------------------------------------------------------------
 
 // TestParse_StreamWithoutTrailingNewline verifies that a digest string
@@ -743,7 +780,7 @@ func TestParse_StreamWithoutTrailingNewline(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00280000  FeatureDensity zero-filled
+// 00290000  FeatureDensity zero-filled
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroFilled verifies that a zero-filled buffer produces
@@ -758,7 +795,7 @@ func TestFeatureDensity_ZeroFilled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00290000  FeatureDensity high entropy
+// 00300000  FeatureDensity high entropy
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_HighEntropy verifies that a high-entropy random buffer
@@ -773,7 +810,7 @@ func TestFeatureDensity_HighEntropy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00300000  FeatureDensity DD mode
+// 00310000  FeatureDensity DD mode
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_DDMode verifies that FeatureDensity works correctly in
@@ -788,7 +825,7 @@ func TestFeatureDensity_DDMode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00310000  FeatureDensity parsed digest
+// 00320000  FeatureDensity parsed digest
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ParsedDigest verifies that FeatureDensity is correct on
@@ -804,7 +841,7 @@ func TestFeatureDensity_ParsedDigest(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00320000  FeatureDensity zero origFileSize
+// 00330000  FeatureDensity zero origFileSize
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroOrigFileSize verifies that FeatureDensity returns 0
@@ -823,7 +860,7 @@ func TestFeatureDensity_ZeroOrigFileSize(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00330000  ParseReader multiple digests
+// 00340000  ParseReader multiple digests
 // ---------------------------------------------------------------------------
 
 // TestParseReader_MultipleDigests verifies that ParseReader
@@ -858,7 +895,7 @@ func TestParseReader_MultipleDigests(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00340000  Parse stream with Windows line ending
+// 00350000  Parse stream with Windows line ending
 // ---------------------------------------------------------------------------
 
 // TestParse_StreamWithWindowsLineEnding verifies that a stream digest
@@ -883,7 +920,7 @@ func TestParse_StreamWithWindowsLineEnding(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00350000  Parse DD with Windows line ending
+// 00360000  Parse DD with Windows line ending
 // ---------------------------------------------------------------------------
 
 // TestParse_DDWithWindowsLineEnding verifies that a DD digest string
@@ -912,7 +949,7 @@ func TestParse_DDWithWindowsLineEnding(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00360000  populateSdbf stream mode error propagation
+// 00370000  populateSdbf stream mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_StreamModeErrorPropagation verifies that an error returned
@@ -943,7 +980,7 @@ func TestPopulateSdbf_StreamModeErrorPropagation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00370000  populateSdbf block mode error propagation
+// 00380000  populateSdbf block mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_BlockModeErrorPropagation verifies that an error returned
@@ -968,4 +1005,29 @@ func TestPopulateSdbf_BlockModeErrorPropagation(t *testing.T) {
 		"populateSdbf must not propagate a goroutine panic to the caller",
 	)
 	checkError(t, err, "populateSdbf must propagate an error from generateBlockSdbf")
+}
+
+// ---------------------------------------------------------------------------
+// 00390000  populateSdbf block mode allocation cap
+// ---------------------------------------------------------------------------
+
+// TestPopulateSdbf_BlockModeAllocationCap verifies that populateSdbf rejects
+// a DD-mode request whose bfCount would exceed maxBfAlloc/bfSize, before
+// allocating sd.buffer or sd.elemCounts.
+//
+// Construction: ddBlockSize is fixed at the minimum legal value (popWinSize)
+// to minimize the buffer needed to push bfCount past the cap. At bfSize=256
+// and maxBfAlloc=256 MiB, the cap works out to maxBfAlloc/bfSize =
+// 1,048,576 filters; a buffer of (filterCap+1)*popWinSize bytes yields
+// exactly filterCap+1 filters with no remainder.
+func TestPopulateSdbf_BlockModeAllocationCap(t *testing.T) {
+	t.Parallel()
+
+	const ddBlockSize = popWinSize
+	filterCap := maxBfAlloc / bfSize
+	buf := make([]byte, (filterCap+1)*ddBlockSize)
+	sd := newTestSdbf(t)
+
+	_, err := populateSdbf(sd, buf, ddBlockSize)
+	checkError(t, err, "populateSdbf must reject a bfCount that exceeds maxBfAlloc/bfSize")
 }
