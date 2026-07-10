@@ -110,8 +110,6 @@ for i, data := range inputs {
 wg.Wait()
 ```
 
-Empirically, using 3-4x the core count as the worker count is optimal because I/O wait time keeps additional workers busy during reads.
-
 ## Public API
 
 ```go
@@ -177,20 +175,6 @@ The block size controls the granularity of similarity detection. The rule is: **
 - Maximum: no hard limit, but a block size larger than the input produces only one filter, which is equivalent to stream mode.
 - Must be a meaningful fraction of the input size — if the block size is close to the input size, you get very few filters and comparison becomes unreliable.
 
-**Practical ranges for PE malware analysis:**
-
-| Block size     | Use case                                            |
-|----------------|-----------------------------------------------------|
-| 4096 – 16384   | Shared functions or small code regions              |
-| 65536 – 262144 | Shared sections, overlays, or packed regions        |
-| 1048576+       | High-level structural similarity across large files |
-
-A block size of 65536 (64 KiB) is a reasonable starting point for general PE analysis. Smaller values give finer detection but produce more filters, larger digests, and slower comparisons. Larger values are coarser but faster.
-
-If you are building a UI with a slider, powers of two in the range 4096 to 1048576 cover all practical use cases. Presenting the values on a logarithmic scale reflects how the tradeoff actually behaves: the difference between 4096 and 8192 is much more significant than the difference between 524288 and 1048576.
-
-Note that stream mode and DD mode answer different questions and are best used together. Stream mode tells you whether two files are broadly similar. DD mode tells you where they are similar. A pair that scores low in stream mode but has specific blocks scoring high in DD mode is a strong signal of code reuse in a specific region.
-
 ## Known limitations and degenerate digests
 
 sdhash extracts features by computing entropy over a sliding window and hashing high-scoring positions. When the input is repetitive or low-entropy — zero-padded PE files, sparse disk images, configuration files with repeated keys — almost everything is rejected by the entropy filter or deduplicated, and very few elements are inserted into the bloom filters. This produces a degenerate digest that does not contain enough information for a meaningful similarity comparison.
@@ -216,56 +200,7 @@ if density < threshold {
 }
 ```
 
-The library exposes the metric but does not enforce a threshold. The correct threshold depends on the corpus. Rough guidance for PE malware analysis:
-
-| Density     | Interpretation                                                                                                                                     |
-|-------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
-| > 0.10      | Normal. The digest has enough features for reliable comparison.                                                                                    |
-| 0.02 – 0.10 | Marginal. The digest may be usable but scores should be treated with lower confidence.                                                             |
-| < 0.02      | Degenerate. The digest almost certainly does not contain enough information. Scores from this digest — including self-comparison — are unreliable. |
-
-These ranges were calibrated against the false-positive pair reported in [sdhash/sdhash#17](https://github.com/sdhash/sdhash/issues/17), where two unrelated zero-padded PE files produced stream densities of 0.008 and 0.012 and a similarity score of 100. Both fall below 0.02. Other input types (documents, disk images, shellcode) may have different natural density distributions. The recommended approach is to compute `FeatureDensity()` across a representative sample of your corpus, plot the distribution, and set the threshold at the natural gap between legitimate low-density files and degenerate ones.
-
-Note that feature density is a function of distinct features, not file size alone. Repeating a file ten times adds almost no new features because the repeated content produces identical hashes that are rejected by the deduplication filter. Reversing the content and appending it adds features because the reversed bytes are entropically distinct. Size is a proxy for density but not a reliable one.
-
-### When to use a cryptographic hash instead
-
-sdhash answers the question "how similar are these two inputs?" It does not answer the question "are these two inputs identical?" The original author acknowledged this directly:
-
-> sdhash works with the similarity digest of the data, which does not contain something like a crypto hash to establish identity.
-
-If your workflow needs to establish identity — confirming that two files are exactly the same, detecting exact duplicates, or verifying that a file has not been modified — use a cryptographic hash (SHA-256, BLAKE2b, etc.) rather than sdhash. A crypto hash is both faster and correct for this purpose.
-
-The recommended pattern when both identity and similarity are needed:
-
-```go
-// First: exact match via crypto hash (fast, always correct).
-h1 := sha256.Sum256(data1)
-h2 := sha256.Sum256(data2)
-if h1 == h2 {
-    fmt.Println("identical")
-    return
-}
-
-// Second: similarity via sdhash (only if not identical).
-d1, _ := factory1.Compute()
-d2, _ := factory2.Compute()
-
-// Third: check feature density before trusting the score.
-if d1.FeatureDensity() < 0.02 || d2.FeatureDensity() < 0.02 {
-    fmt.Println("one or both digests are degenerate; similarity score is unreliable")
-    return
-}
-
-score, ok := d1.Compare(d2)
-if !ok {
-    fmt.Println("comparison could not be performed")
-    return
-}
-fmt.Printf("similarity: %d/100\n", score)
-```
-
-This three-step pattern — crypto hash for identity, sdhash for similarity, density check for validity — covers the full range of inputs reliably, including the low-entropy and small-file cases where sdhash alone can produce misleading results.
+The library exposes the metric but does not enforce a threshold. The correct threshold depends on the corpus.
 
 ## C++ reference compatibility
 
@@ -313,8 +248,6 @@ Each `New` call followed by `Compute` produces an independent `Sdbf` instance wi
 
 **`SdbfFactory` is immutable.** `WithBlockSize` returns a new factory rather than modifying the receiver. Sharing a factory across goroutines is safe, though pointless since each `Compute` call produces an independent result.
 
-**The inner scoring loop is the computational bottleneck.** `generateChunkScores` accounts for 50–62% of total CPU time, and instruction-level profiling confirms this is irreducible algorithmic work (rank comparisons and loop control), not overhead that can be optimized away. When processing many inputs concurrently the cores stay saturated on scoring work. Further within-input parallelism of the scoring loop was evaluated and showed no gain when a multi-worker pool is already running at the input level.
-
 ## Testing
 
 ```bash
@@ -347,9 +280,8 @@ go test -tags corpuscompare -run TestCorpusCompare -timeout=0 -count=1 ./...
 ```
 
 `corpushash` regenerates the normal corpus (66,020 files across 23
-categories, PCG stream 0) and folds the same per-digest statistics
-`sdhashtest` emits in its corpushash mode into one anchor. `corpuscompare`
-regenerates the mixedbag corpus (1,196 files, PCG stream 1), scores every
-ordered pair including self-pairs with `Compare`, and folds the per-pair
+categories) and folds per-digest statistics into one anchor. `corpuscompare`
+regenerates the mixedbag corpus (1,196 files), scores every ordered pair
+including self-pairs with `Compare`, and folds the per-pair
 fields into one anchor per mode. Both run in CI on push to main; they are
-excluded from the default suite because they take several minutes.
+excluded from the default suite.
