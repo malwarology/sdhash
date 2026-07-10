@@ -6,34 +6,6 @@ This library is a focused implementation of the core digest algorithm. It has no
 
 This work is based on the original Go implementation by [Emiliano Ciavatta](https://github.com/eciavatta/sdhash), which in turn is based on the C++ reference implementation by [Vassil Roussev](https://github.com/hexavore) and [Candice Quates](https://github.com/candicenonsense).
 
-## Correctness
-
-Both digest construction and scoring have been validated against the C++
-sdhash reference implementation. The reference-compatible construction
-(`NewRef`) reproduces C++ digests byte-for-byte across the normal corpus
-of 66,020 files spanning 23 file-type categories, in both stream and DD
-modes. The reference-compatible scoring (`CompareRef`) was cross-validated
-across 2,860,832 pair comparisons — every ordered pair of the 1,196-file
-mixedbag corpus, in both stream and DD modes — with zero unexplained
-divergences.
-
-The modern path (`New` and `Compare`) diverges from the C++ reference in
-three material ways, each identified, root-caused, and reproduced. Two are
-in scoring; the third is in construction — it changes digest output, so
-its effect is exhibited and measured in the scores:
-
-1. **Staged early-exit** (scoring) — the C++ AND-popcount uses a staged
-   heuristic that can reject filter pairs early. `Compare` uses exact full
-   popcount; `CompareRef` reproduces the C++ heuristic.
-2. **Score accumulation** (scoring) — the C++ reference uses conditional
-   assignment on the first iteration. `Compare` uses straightforward
-   addition; `CompareRef` reproduces the C++ pattern.
-3. **Chunk-score double-count** (construction) — the C++ sliding-window
-   feature selector double-counts positions on runs of equal ranks
-   (issue #57). `New` increments exactly one position per window; `NewRef`
-   reproduces the C++ double-count. Over the 1,196-file mixedbag corpus
-   this shifts scores on 9.855% of pairs, overwhelmingly by small margins.
-
 ## Installation
 
 ```bash
@@ -87,26 +59,6 @@ if !ok {
 }
 fmt.Printf("similarity: %d/100\n", score)
 ```
-
-### Comparing with CompareRef (C++ compatibility)
-
-`CompareRef` returns a single integer matching the C++ reference
-implementation's scoring convention: 0–100 for a valid comparison, or -1
-if the comparison is degenerate. Use this method when comparing against
-digests produced by the C++ `sdhash` tool or when exact score parity with
-the C++ implementation is required.
-
-```go
-score := digest1.CompareRef(digest2)
-if score < 0 {
-    fmt.Println("comparison is degenerate")
-    return
-}
-fmt.Printf("similarity: %d/100\n", score)
-```
-
-For all new work, prefer `Compare` which returns `(score, ok)` and does
-not overload the return value.
 
 ### Parsing a digest string
 
@@ -183,7 +135,6 @@ func ParseSdbfFromReader(io.Reader) (Sdbf, error)
 // Sdbf is a computed similarity digest.
 type Sdbf interface {
     Compare(Sdbf) (int, bool)            // similarity score in [0, 100]; false if not comparable
-    CompareRef(Sdbf) int                 // C++ reference-compatible score; -1 if not comparable
     String() string                      // wire-format encoding
     FilterSize() uint64                  // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
@@ -354,18 +305,6 @@ scoring (via `Compare`) and one in construction (via `New`):
    no pair where the reference scored a comparison the modern path
    rejected.
 
-`NewRef` reproduces the exact C++ construction (including the
-double-count), and `CompareRef` reproduces the exact C++ scoring (both
-heuristics above) plus the single-int return convention with -1 as a
-sentinel. Use them when you need exact parity with the C++ tool or when
-working with digests originally produced by the C++ implementation.
-
-### Deprecation plan
-
-`CompareRef` and its underlying scoring functions are removed in v1.0.0.
-If you need C++ reference-compatible scoring after that point, pin your
-dependency to v0.6.0.
-
 ## Concurrency
 
 Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `String`, `FilterSize`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
@@ -414,15 +353,3 @@ regenerates the mixedbag corpus (1,196 files, PCG stream 1), scores every
 ordered pair including self-pairs with `Compare`, and folds the per-pair
 fields into one anchor per mode. Both run in CI on push to main; they are
 excluded from the default suite because they take several minutes.
-
-### C++ reference compatibility
-
-Parity with the C++ reference was established out-of-repo by the
-`sdhashtest` harness driving the `NewRef` / `CompareRef` surface: digest
-generation matched across the 66,020-file normal corpus in both modes, and
-scoring was cross-validated across 2,860,832 pair comparisons (every
-ordered pair of the 1,196-file mixedbag corpus, both modes) with zero
-unexplained divergences. **v0.6.0 is the frozen tag at which that
-validation can be reproduced, and the last release carrying the
-reference-compatibility surface.** See the C++ reference compatibility
-section above for what remains and the pinning guidance.

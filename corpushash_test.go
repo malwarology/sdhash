@@ -10,13 +10,10 @@ package sdhash
 // II. Reference corpus — DD mode
 // └── 00020000  Full normal-corpus DD digest anchor
 //
-// The corpushash test is the storage-free successor to the corpus test. Rather
-// than shipping reference CSVs of every digest, it regenerates the normal
-// corpus deterministically (bindatagenerator -n, PCG stream 0). It then computes
-// the same stream and DD digest rows the sdhashtest tool emits in its corpushash
-// (-l) mode. Finally, it folds those rows into a single SHA-256 anchor with the
-// csvhash three-tier construction. A change to generation, digest computation,
-// or the captured per-digest statistics changes the anchor and fails the test.
+// The corpushash test regenerates the normal corpus deterministically. It then
+// computes the stream and DD digest rows. Finally, it folds those rows into
+// a single SHA-256 anchor. A change to generation, digest computation, or the
+// captured per-digest statistics changes the anchor and fails the test.
 
 import (
 	"fmt"
@@ -26,19 +23,9 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Expected anchors (production scale: bdgFilesPerType files per category,
-// PCG stream 0). These are the golden values computed by the reference
-// pipeline (bindatagenerator -n | sdhashtest -l | csvhash) over the full
-// normal corpus. Regenerate them only when an intended algorithm change is
-// made, and verify against the reference tools before committing.
+// Reference anchors for the full normal corpus
 // ---------------------------------------------------------------------------
 
-// Reference anchors for the full normal corpus (bindatagenerator -n defaults:
-// filesPerType 3000, master seed 20260324, PCG stream 0; large overridden to
-// 33-80 MiB x 20 -> 66,020 files), captured from the reference pipeline
-// bindatagenerator -n | sdhashtest -l | csvhash. An empty string here means the
-// anchor is unpinned: the test then computes it, prints it, and fails with an
-// instruction to verify and paste the value.
 const (
 	corpusHashStreamAnchor = "8e0245ceceaee89c7da5c40cf5f3a37647ec8cda5791809e6d96acc2473c0444"
 	corpusHashDDAnchor     = "6efcd1a72c701e17a56724b035d4591d0b2d45c92fcbf990e5fc1e19032930a6"

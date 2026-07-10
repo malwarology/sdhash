@@ -4,8 +4,8 @@ import "testing"
 
 // End-to-end benchmarks for the library's processing pipeline, exercised
 // through the public API on small, in-memory inputs. They are a developer
-// instrument, not a CI gate: capture a baseline, make a change, capture again,
-// and compare with benchstat.
+// instrument: capture a baseline, make a change, capture again, and compare
+// with benchstat.
 //
 //	go test -run '^$' -bench . -benchmem -count=10 > before.txt
 //	# make a change

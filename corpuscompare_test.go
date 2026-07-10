@@ -10,14 +10,11 @@ package sdhash
 // II. Reference corpus — DD mode
 // └── 00020000  Full mixedbag-corpus DD pairwise-score anchor
 //
-// The corpuscompare test is the storage-free successor to the compat test.
-// Rather than shipping reference CSVs of every pairwise score, it regenerates
-// the mixedbag corpus deterministically (bindatagenerator -m, PCG stream 1). It
-// scores every ordered pair (including self-pairs) exactly as the sdhashtest
-// tool does in its corpuscompare (-f) mode. It then folds the resulting rows
-// into a single SHA-256 anchor per mode with the csvhash three-tier
-// construction. A change to generation, digest computation, scoring, or the
-// captured per-pair fields changes the anchor and fails the test.
+// The corpuscompare test regenerates the mixedbag corpus deterministically.
+// It scores every ordered pair (including self-pairs). It then folds the
+// resulting rows into a single SHA-256 anchor per mode. A change to
+// generation, digest computation, scoring, or the captured per-pair fields
+// changes the anchor and fails the test.
 
 import (
 	"fmt"
@@ -29,12 +26,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Reference anchors for the full mixedbag corpus (bindatagenerator -m defaults:
-// bdgMixedBag = 1200 total, master seed 20260324, PCG stream 1, perCat =
-// 1200 / len(categories) = 52 -> 1196 files). They were captured from the
-// reference pipeline bindatagenerator -m | sdhashtest -f | csvhash. An empty
-// string here means the anchor is unpinned: the test then computes it, prints
-// it, and fails with an instruction to verify and paste the value.
+// Reference anchors for the full mixedbag corpus
 // ---------------------------------------------------------------------------
 
 const (

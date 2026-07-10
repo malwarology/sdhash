@@ -6,9 +6,6 @@ import "fmt"
 // scores, and hashes from buffer. It is separated from createSdbf so that
 // tests can pass a deliberately broken *sdbf to exercise the error-return
 // paths in both stream and block mode.
-//
-// IMPORTANT: Do not add a default index bloom filter here. Adding one causes
-// hash mismatches with the reference implementation.
 func populateSdbf(sd *sdbf, buffer []byte, ddBlockSize uint32) (*sdbf, error) {
 	fileSize := uint64(len(buffer))
 	sd.origFileSize = fileSize
@@ -83,28 +80,6 @@ func New(buffer []byte) (SdbfFactory, error) {
 	buf := make([]byte, len(buffer))
 	copy(buf, buffer)
 	return &sdbfFactory{
-		buffer: buf,
-	}, nil
-}
-
-// NewRef returns a factory that produces a Sdbf using the C++-reference-
-// compatible construction path (the pre-fix chunk-score feature selection).
-// It is the construction-side analogue of CompareRef: it was built during
-// the reference-correctness phase so external harnesses could compare the
-// Go library's digests byte-for-byte against the C++ reference.
-//
-// Deprecated: NewRef is part of the C++ reference-compatibility surface,
-// frozen at v0.6.0 and removed in v1.0.0. Pin to v0.6.0 to retain it. New
-// code should use New, which produces the modern digest.
-//
-//goland:noinspection GoDeprecation
-func NewRef(buffer []byte) (SdbfFactory, error) {
-	if len(buffer) < MinFileSize {
-		return nil, fmt.Errorf("buffer length must be at least %d bytes", MinFileSize)
-	}
-	buf := make([]byte, len(buffer))
-	copy(buf, buffer)
-	return &sdbfFactoryRef{
 		buffer: buf,
 	}, nil
 }

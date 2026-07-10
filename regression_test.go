@@ -12,89 +12,85 @@ import (
 //
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
 //    https://github.com/eciavatta/sdhash/issues/1
-// ├── 00010000  Default index not created
-// ├── 00020000  Stream hash matches reference
-// ├── 00030000  DD hash matches reference
-// ├── 00040000  Stream and DD parsed score in range
-// ├── 00050000  Round-trip stream reference
-// └── 00060000  Round-trip DD reference
+// ├── 00010000  Stream and DD parsed score in range
+// ├── 00020000  Round-trip stream reference
+// └── 00030000  Round-trip DD reference
 //
 // Issue 2 — Feature density detection for degenerate stream mode digests
 //    https://github.com/malwarology/sdhash/issues/2
-// ├── 00070000  Degenerate stream digests
-// └── 00080000  DD mode no false positive
+// └── 00040000  DD mode no false positive
 //
 // Issue 3 — Unbounded goroutine spawning in generateBlockSdbf
 //    https://github.com/malwarology/sdhash/issues/3
-// └── 00090000  High block count DD mode
+// └── 00050000  High block count DD mode
 //
 // Issue 4 — Unbounded memory allocation in ParseSdbfFromString
 //    https://github.com/malwarology/sdhash/issues/4
-// ├── 00100000  Parse oversized bfCount
-// └── 00110000  Parse zero bfSize
+// ├── 00060000  Parse oversized bfCount
+// └── 00070000  Parse zero bfSize
 //
 // Issue 10 — ParseSdbfFromString panics on truncated base64 payload
 //    https://github.com/malwarology/sdhash/issues/10
-// ├── 00120000  Parse truncated stream buffer
-// ├── 00130000  Parse stream lastCount exceeds maxElem
-// ├── 00140000  Parse DD block too short
-// └── 00150000  Parse DD element count exceeds maxElem
+// ├── 00080000  Parse truncated stream buffer
+// ├── 00090000  Parse stream lastCount exceeds maxElem
+// ├── 00100000  Parse DD block too short
+// └── 00110000  Parse DD element count exceeds maxElem
 //
 // Issue 11 — BfSize exported as mutable var but hardwired to 256 throughout
 //    https://github.com/malwarology/sdhash/issues/11
-// └── 00160000  Parse unsupported bfSize
+// └── 00120000  Parse unsupported bfSize
 //
 // Issue 14 — New retains caller's slice without copying
 //    https://github.com/malwarology/sdhash/issues/14
-// └── 00170000  Buffer mutation after factory creation
+// └── 00130000  Buffer mutation after factory creation
 //
 // Issue 15 — DD parsing fails on digests without trailing newline
 //    https://github.com/malwarology/sdhash/issues/15
-// └── 00180000  DD parse without trailing newline
+// └── 00140000  DD parse without trailing newline
 //
 // Issue 17 — Compare panics on nil or foreign Sdbf implementation
 //    https://github.com/malwarology/sdhash/issues/17
-// ├── 00190000  Compare with nil Sdbf returns -1
-// └── 00200000  Compare with foreign Sdbf implementation returns -1
+// ├── 00150000  Compare with nil Sdbf returns -1
+// └── 00160000  Compare with foreign Sdbf implementation returns -1
 //
 // Issue 19 — Unconstrained maxElem enables uint32 overflow in Compare
 //    https://github.com/malwarology/sdhash/issues/19
-// ├── 00210000  Parse maxElem overflow (uint32 wraparound)
-// └── 00220000  Parse maxElem zero
+// ├── 00170000  Parse maxElem overflow (uint32 wraparound)
+// └── 00180000  Parse maxElem zero
 //
 // Issue 20 — Inner while loop evaluates array access before bounds guard
 //    https://github.com/malwarology/sdhash/issues/20
-// └── 00230000  generateChunkScores inner while loop OOB
+// └── 00190000  generateChunkScores inner while loop OOB
 //
 // Issue 21 — WithBlockSize accepts values below PopWinSize causing underflow panic
 //    https://github.com/malwarology/sdhash/issues/21
-// └── 00240000  Small block size uint64 underflow
+// └── 00200000  Small block size uint64 underflow
 //
 // Issue 31 — ParseSdbfFromString ddBlockSize silently truncated from uint64 to uint32
 //    https://github.com/malwarology/sdhash/issues/31
-// └── 00250000  DD ddBlockSize uint64 to uint32 truncation
+// └── 00210000  DD ddBlockSize uint64 to uint32 truncation
 //
 // Issue 43 — sdbfScore mixes -1 sentinel returns from sdbfMaxScore into the score sum, corrupting results
 //    https://github.com/malwarology/sdhash/issues/43
-// ├── 00260000  Stream mode degenerate pair returns score 0 and ok false
-// └── 00270000  DD mode degenerate pair returns score 0 and ok false
+// ├── 00220000  Stream mode degenerate pair returns score 0 and ok false
+// └── 00230000  DD mode degenerate pair returns score 0 and ok false
 //
 // Issue 57 — generateChunkScores double-counts positions in equal-rank runs
 //    https://github.com/malwarology/sdhash/issues/57
-// ├── 00280000  Reference equivalence: high-entropy inputs
-// ├── 00290000  Reference equivalence: tie-heavy inputs
-// ├── 00300000  Reference equivalence: zero-laden inputs
-// ├── 00310000  Reference equivalence: persistent-min inputs
-// ├── 00320000  Reference equivalence: monotonic inputs
-// ├── 00330000  Reference equivalence: all-equal inputs
-// ├── 00340000  Reference equivalence: all-zero inputs
-// ├── 00350000  Golden: high-entropy single interior minimum
-// ├── 00360000  Golden: tie-heavy rightmost-of-first-run selection
-// ├── 00370000  Golden: zero-laden zero-minimum skipped
-// ├── 00380000  Golden: persistent-min single position, no double-count
-// ├── 00390000  Golden: monotonic minimum at left edge
-// ├── 00400000  Golden: all-equal rightmost-of-window, one increment per window
-// └── 00410000  Golden: all-zero produces no scores
+// ├── 00240000  Reference equivalence: high-entropy inputs
+// ├── 00250000  Reference equivalence: tie-heavy inputs
+// ├── 00260000  Reference equivalence: zero-laden inputs
+// ├── 00270000  Reference equivalence: persistent-min inputs
+// ├── 00280000  Reference equivalence: monotonic inputs
+// ├── 00290000  Reference equivalence: all-equal inputs
+// ├── 00300000  Reference equivalence: all-zero inputs
+// ├── 00310000  Golden: high-entropy single interior minimum
+// ├── 00320000  Golden: tie-heavy rightmost-of-first-run selection
+// ├── 00330000  Golden: zero-laden zero-minimum skipped
+// ├── 00340000  Golden: persistent-min single position, no double-count
+// ├── 00350000  Golden: monotonic minimum at left edge
+// ├── 00360000  Golden: all-equal rightmost-of-window, one increment per window
+// └── 00370000  Golden: all-zero produces no scores
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -102,88 +98,7 @@ import (
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00010000  Default index not created
-// ---------------------------------------------------------------------------
-
-//goland:noinspection GoDeprecation
-func TestIssue1DefaultIndexNotCreated(t *testing.T) {
-	t.Parallel()
-	data := decryptTestFile(t, "testdata/issue1.bin.enc")
-
-	factory, err := NewRef(data)
-	mustNoError(t, err)
-
-	sd, err := factory.Compute()
-	mustNoError(t, err)
-
-	// Cast to internal type to verify bloom filter counts directly.
-	// These values were confirmed against the C++ reference implementation.
-	internal := sd.(*sdbf)
-	checkEqual(t, uint32(66), internal.bfCount,
-		"bfCount should match C++ reference (regression: issue #1)")
-	checkEqual(t, uint32(64), internal.lastCount,
-		"lastCount should match C++ reference (regression: issue #1)")
-
-	score, ok := sd.Compare(sd)
-	checkTrue(t, ok, "self-comparison must be comparable")
-	checkEqual(t, 100, score, "self-comparison must return 100")
-}
-
-// ---------------------------------------------------------------------------
-// 00020000  Stream hash matches reference
-// ---------------------------------------------------------------------------
-
-//goland:noinspection GoDeprecation
-func TestIssue1StreamHash_MatchesReference(t *testing.T) {
-	t.Parallel()
-
-	data := decryptTestFile(t, "testdata/issue1.bin.enc")
-
-	expectedBytes, err := os.ReadFile("testdata/issue1.stream")
-	mustNoError(t, err)
-	expected := string(expectedBytes)
-	expected = strings.TrimRight(expected, "\r\n") + "\n"
-
-	factory, err := NewRef(data)
-	mustNoError(t, err)
-
-	sd, err := factory.Compute()
-	mustNoError(t, err)
-
-	checkEqual(t, expected, sd.String(),
-		"stream digest wire format must match the C++ reference output in testdata/issue1.stream")
-}
-
-// ---------------------------------------------------------------------------
-// 00030000  DD hash matches reference
-// ---------------------------------------------------------------------------
-
-//goland:noinspection GoDeprecation
-func TestIssue1DDHash_MatchesReference(t *testing.T) {
-	t.Parallel()
-
-	data := decryptTestFile(t, "testdata/issue1.bin.enc")
-
-	expectedBytes, err := os.ReadFile("testdata/issue1.dd")
-	mustNoError(t, err)
-	expected := string(expectedBytes)
-	expected = strings.TrimRight(expected, "\r\n") + "\n"
-
-	factory, err := NewRef(data)
-	mustNoError(t, err)
-
-	// The DD reference was produced with a 1 MiB block size,
-	// as shown by the ddBlockSize field in testdata/issue1.dd.
-	const ddBlockSize = 1048576
-	sd, err := factory.WithBlockSize(ddBlockSize).Compute()
-	mustNoError(t, err)
-
-	checkEqual(t, expected, sd.String(),
-		"DD digest wire format must match the C++ reference output in testdata/issue1.dd")
-}
-
-// ---------------------------------------------------------------------------
-// 00040000  Stream and DD parsed score in range
+// 00010000  Stream and DD parsed score in range
 // ---------------------------------------------------------------------------
 
 func TestIssue1_StreamAndDDParsedScoreInRange(t *testing.T) {
@@ -209,7 +124,7 @@ func TestIssue1_StreamAndDDParsedScoreInRange(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00050000  Round-trip stream reference
+// 00020000  Round-trip stream reference
 // ---------------------------------------------------------------------------
 
 func TestIssue1_RoundTrip_StreamReference(t *testing.T) {
@@ -228,7 +143,7 @@ func TestIssue1_RoundTrip_StreamReference(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00060000  Round-trip DD reference
+// 00030000  Round-trip DD reference
 // ---------------------------------------------------------------------------
 
 func TestIssue1_RoundTrip_DDReference(t *testing.T) {
@@ -252,38 +167,7 @@ func TestIssue1_RoundTrip_DDReference(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00070000  Degenerate stream digests
-// ---------------------------------------------------------------------------
-
-// TestIssue2_DegenerateStreamDigests verifies that the two samples from
-// sdhash/sdhash#17 produce stream digests with feature density below 0.02.
-// Without a density check, these two unrelated files score 100 against each
-// other in stream mode.
-func TestIssue2_DegenerateStreamDigests(t *testing.T) {
-	t.Parallel()
-
-	dataA := decryptTestFile(t, "testdata/issue2a.bin.enc")
-	dataB := decryptTestFile(t, "testdata/issue2b.bin.enc")
-
-	sdA := streamDigestRef(t, dataA)
-	sdB := streamDigestRef(t, dataB)
-
-	checkAtMost(t, sdA.FeatureDensity(), 0.02,
-		"issue2a stream density must be below 0.02")
-	checkAtMost(t, sdB.FeatureDensity(), 0.02,
-		"issue2b stream density must be below 0.02")
-
-	// The stream comparison produces a false positive of 100.
-	// This documents the known failure mode; FeatureDensity is how
-	// callers detect it.
-	score, ok := sdA.Compare(sdB)
-	checkTrue(t, ok, "issue2 stream comparison must be comparable")
-	checkEqual(t, 100, score,
-		"issue2 stream comparison produces a false positive of 100")
-}
-
-// ---------------------------------------------------------------------------
-// 00080000  DD mode no false positive
+// 00040000  DD mode no false positive
 // ---------------------------------------------------------------------------
 
 // TestIssue2_DDModeNoFalsePositive verifies that DD mode does not produce
@@ -309,7 +193,7 @@ func TestIssue2_DDModeNoFalsePositive(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00090000  High block count DD mode
+// 00050000  High block count DD mode
 // ---------------------------------------------------------------------------
 
 // TestIssue3_HighBlockCountDDMode verifies that computing a DD digest with a
@@ -340,7 +224,7 @@ func TestIssue3_HighBlockCountDDMode(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00100000  Parse oversized bfCount
+// 00060000  Parse oversized bfCount
 // ---------------------------------------------------------------------------
 
 // TestIssue4_ParseOversizedBfCount verifies that a digest string with a
@@ -359,7 +243,7 @@ func TestIssue4_ParseOversizedBfCount(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00110000  Parse zero bfSize
+// 00070000  Parse zero bfSize
 // ---------------------------------------------------------------------------
 
 // TestIssue4_ParseZeroBfSize verifies that a digest string with bfSize set to
@@ -383,7 +267,7 @@ func TestIssue4_ParseZeroBfSize(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00120000  Parse truncated stream buffer
+// 00080000  Parse truncated stream buffer
 // ---------------------------------------------------------------------------
 
 // TestIssue10_ParseTruncatedStreamBuffer verifies that a stream digest whose
@@ -402,7 +286,7 @@ func TestIssue10_ParseTruncatedStreamBuffer(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00130000  Parse stream lastCount exceeds maxElem
+// 00090000  Parse stream lastCount exceeds maxElem
 // ---------------------------------------------------------------------------
 
 // TestIssue10_ParseStreamLastCountExceedsMaxElem verifies that a stream digest
@@ -421,7 +305,7 @@ func TestIssue10_ParseStreamLastCountExceedsMaxElem(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00140000  Parse DD block too short
+// 00100000  Parse DD block too short
 // ---------------------------------------------------------------------------
 
 // TestIssue10_ParseDDBlockTooShort verifies that a DD digest where a block's
@@ -441,7 +325,7 @@ func TestIssue10_ParseDDBlockTooShort(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00150000  Parse DD element count exceeds maxElem
+// 00110000  Parse DD element count exceeds maxElem
 // ---------------------------------------------------------------------------
 
 // TestIssue10_ParseDDElemCountExceedsMaxElem verifies that a DD digest where
@@ -465,7 +349,7 @@ func TestIssue10_ParseDDElemCountExceedsMaxElem(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00160000  Parse unsupported bfSize
+// 00120000  Parse unsupported bfSize
 // ---------------------------------------------------------------------------
 
 // TestIssue11_ParseUnsupportedBfSize verifies that a stream digest string with
@@ -493,7 +377,7 @@ func TestIssue11_ParseUnsupportedBfSize(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00170000  Buffer mutation after factory creation
+// 00130000  Buffer mutation after factory creation
 // ---------------------------------------------------------------------------
 
 // TestIssue14_BufferMutationAfterFactory verifies that mutating the original
@@ -534,7 +418,7 @@ func TestIssue14_BufferMutationAfterFactory(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00180000  DD parse without trailing newline
+// 00140000  DD parse without trailing newline
 // ---------------------------------------------------------------------------
 
 // TestIssue15_DDParseWithoutTrailingNewline verifies that ParseSdbfFromString
@@ -568,7 +452,7 @@ func TestIssue15_DDParseWithoutTrailingNewline(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00190000  Compare with nil Sdbf returns -1
+// 00150000  Compare with nil Sdbf returns -1
 // ---------------------------------------------------------------------------
 
 // TestIssue17_CompareNilSdbf verifies that calling Compare with a nil Sdbf
@@ -589,7 +473,7 @@ func TestIssue17_CompareNilSdbf(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00200000  Compare with foreign Sdbf implementation returns -1
+// 00160000  Compare with foreign Sdbf implementation returns -1
 // ---------------------------------------------------------------------------
 
 // foreignSdbfImpl is a minimal Sdbf implementation used only by
@@ -602,7 +486,6 @@ func (f *foreignSdbfImpl) FilterSize() uint64       { return 0 }
 func (f *foreignSdbfImpl) InputSize() uint64        { return 0 }
 func (f *foreignSdbfImpl) FilterCount() uint32      { return 0 }
 func (f *foreignSdbfImpl) Compare(Sdbf) (int, bool) { return 0, false }
-func (f *foreignSdbfImpl) CompareRef(Sdbf) int      { return -1 }
 func (f *foreignSdbfImpl) String() string           { return "" }
 func (f *foreignSdbfImpl) FeatureDensity() float64  { return 0 }
 
@@ -632,7 +515,7 @@ func TestIssue17_CompareForeignImpl(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00210000  Parse maxElem overflow (uint32 wraparound)
+// 00170000  Parse maxElem overflow (uint32 wraparound)
 // ---------------------------------------------------------------------------
 
 // TestIssue19_ParseMaxElemOverflow verifies that a stream digest string with
@@ -655,7 +538,7 @@ func TestIssue19_ParseMaxElemOverflow(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00220000  Parse maxElem zero
+// 00180000  Parse maxElem zero
 // ---------------------------------------------------------------------------
 
 // TestIssue19_ParseMaxElemZero verifies that a stream digest string with
@@ -682,7 +565,7 @@ func TestIssue19_ParseMaxElemZero(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00230000  generateChunkScores inner while loop OOB
+// 00190000  generateChunkScores inner while loop OOB
 // ---------------------------------------------------------------------------
 
 // TestIssue20_ChunkScoresInnerWhileOOB verifies that generateChunkScores
@@ -715,7 +598,7 @@ func TestIssue20_ChunkScoresInnerWhileOOB(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00240000  Small block size uint64 underflow
+// 00200000  Small block size uint64 underflow
 // ---------------------------------------------------------------------------
 
 // TestIssue21_SmallBlockSizeUnderflow verifies that passing a block size below
@@ -746,7 +629,7 @@ func TestIssue21_SmallBlockSizeUnderflow(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00250000  DD ddBlockSize uint64 to uint32 truncation
+// 00210000  DD ddBlockSize uint64 to uint32 truncation
 // ---------------------------------------------------------------------------
 
 // TestIssue31_DdBlockSizeTruncation verifies that a DD digest string with
@@ -775,7 +658,7 @@ func TestIssue31_DdBlockSizeTruncation(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00260000  Stream mode degenerate pair returns score 0 and ok false
+// 00220000  Stream mode degenerate pair returns score 0 and ok false
 // ---------------------------------------------------------------------------
 
 // TestIssue43_StreamDegeneratePairScore verifies that comparing two stream
@@ -808,7 +691,7 @@ func TestIssue43_StreamDegeneratePairScore(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00270000  DD mode degenerate pair returns score 0 and ok false
+// 00230000  DD mode degenerate pair returns score 0 and ok false
 // ---------------------------------------------------------------------------
 
 // TestIssue43_DDDegeneratePairScore verifies the same sentinel-exclusion fix
@@ -851,7 +734,7 @@ func TestIssue43_DDDegeneratePairScore(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00280000  Reference equivalence: high-entropy inputs
+// 00240000  Reference equivalence: high-entropy inputs
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Equivalence_HighEntropy(t *testing.T) {
@@ -864,7 +747,7 @@ func TestIssue57_Equivalence_HighEntropy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00290000  Reference equivalence: tie-heavy inputs
+// 00250000  Reference equivalence: tie-heavy inputs
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Equivalence_TieHeavy(t *testing.T) {
@@ -877,7 +760,7 @@ func TestIssue57_Equivalence_TieHeavy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00300000  Reference equivalence: zero-laden inputs
+// 00260000  Reference equivalence: zero-laden inputs
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Equivalence_ZeroLaden(t *testing.T) {
@@ -890,7 +773,7 @@ func TestIssue57_Equivalence_ZeroLaden(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00310000  Reference equivalence: persistent-min inputs
+// 00270000  Reference equivalence: persistent-min inputs
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Equivalence_PersistentMin(t *testing.T) {
@@ -903,7 +786,7 @@ func TestIssue57_Equivalence_PersistentMin(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00320000  Reference equivalence: monotonic inputs
+// 00280000  Reference equivalence: monotonic inputs
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Equivalence_Monotonic(t *testing.T) {
@@ -916,7 +799,7 @@ func TestIssue57_Equivalence_Monotonic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00330000  Reference equivalence: all-equal inputs
+// 00290000  Reference equivalence: all-equal inputs
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Equivalence_AllEqual(t *testing.T) {
@@ -929,7 +812,7 @@ func TestIssue57_Equivalence_AllEqual(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00340000  Reference equivalence: all-zero inputs
+// 00300000  Reference equivalence: all-zero inputs
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Equivalence_AllZero(t *testing.T) {
@@ -942,7 +825,7 @@ func TestIssue57_Equivalence_AllZero(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00350000  Golden: high-entropy single interior minimum
+// 00310000  Golden: high-entropy single interior minimum
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Golden_HighEntropy(t *testing.T) {
@@ -959,7 +842,7 @@ func TestIssue57_Golden_HighEntropy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00360000  Golden: tie-heavy rightmost-of-first-run selection
+// 00320000  Golden: tie-heavy rightmost-of-first-run selection
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Golden_TieHeavy(t *testing.T) {
@@ -979,7 +862,7 @@ func TestIssue57_Golden_TieHeavy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00370000  Golden: zero-laden zero-minimum skipped
+// 00330000  Golden: zero-laden zero-minimum skipped
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Golden_ZeroLaden(t *testing.T) {
@@ -998,7 +881,7 @@ func TestIssue57_Golden_ZeroLaden(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00380000  Golden: persistent-min single position, no double-count
+// 00340000  Golden: persistent-min single position, no double-count
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Golden_PersistentMin(t *testing.T) {
@@ -1019,7 +902,7 @@ func TestIssue57_Golden_PersistentMin(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00390000  Golden: monotonic minimum at left edge
+// 00350000  Golden: monotonic minimum at left edge
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Golden_Monotonic(t *testing.T) {
@@ -1036,7 +919,7 @@ func TestIssue57_Golden_Monotonic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00400000  Golden: all-equal rightmost-of-window, one increment per window
+// 00360000  Golden: all-equal rightmost-of-window, one increment per window
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Golden_AllEqual(t *testing.T) {
@@ -1055,7 +938,7 @@ func TestIssue57_Golden_AllEqual(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00410000  Golden: all-zero produces no scores
+// 00370000  Golden: all-zero produces no scores
 // ---------------------------------------------------------------------------
 
 func TestIssue57_Golden_AllZero(t *testing.T) {

@@ -38,22 +38,6 @@ type Sdbf interface {
 	// threshold.
 	Compare(other Sdbf) (int, bool)
 
-	// CompareRef returns the similarity score between this Sdbf and other
-	// using C++-reference-compatible semantics. The returned int is in
-	// [0, 100] for a valid comparison, or -1 if the comparison is
-	// degenerate (all filters below the minimum element threshold).
-	//
-	// It was built during the reference-correctness phase of the port to
-	// support external test harnesses that compared the Go library's
-	// output byte-for-byte against the C++ reference via CSV diffing. Its
-	// return shape matches the C++ compare() method exactly.
-	//
-	// Deprecated: CompareRef is part of the C++ reference-compatibility
-	// surface, frozen at v0.6.0 and removed in v1.0.0. Pin to v0.6.0 to
-	// retain it. New code should use Compare, which returns (score, ok)
-	// in idiomatic Go form.
-	CompareRef(other Sdbf) int
-
 	// String returns the digest encoded as a string in the sdbf wire format.
 	String() string
 
@@ -130,17 +114,6 @@ func (sd *sdbf) Compare(other Sdbf) (int, bool) {
 		return 0, false
 	}
 	return result, true
-}
-
-func (sd *sdbf) CompareRef(other Sdbf) int {
-	if other == nil {
-		return -1
-	}
-	o, ok := other.(*sdbf)
-	if !ok {
-		return -1
-	}
-	return sdbfScoreRef(sd, o)
 }
 
 func (sd *sdbf) String() string {

@@ -217,18 +217,6 @@ func streamDigest(t *testing.T, buf []byte) Sdbf {
 	return sd
 }
 
-// streamDigestRef computes a stream-mode digest for buf and stops the test on error. Uses C++ compatible API.
-//
-//goland:noinspection GoDeprecation
-func streamDigestRef(t *testing.T, buf []byte) Sdbf {
-	t.Helper()
-	factory, err := NewRef(buf)
-	mustNoError(t, err)
-	sd, err := factory.Compute()
-	mustNoError(t, err)
-	return sd
-}
-
 // ddDigest computes a DD-mode digest for buf with the given block size and stops the test on error.
 func ddDigest(t *testing.T, buf []byte, blockSize uint32) Sdbf {
 	t.Helper()
