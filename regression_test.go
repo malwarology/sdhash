@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"math/bits"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Regression test index
@@ -111,6 +113,14 @@ import (
 // ├── 00450000  WithBlockSize rejects allocation above the cap
 // ├── 00460000  Allocation cap allows the exact boundary
 // └── 00470000  Allocation cap rejects before allocating the buffer
+//
+// Issue 64 — ParseReader buffers unbounded attacker-controlled data before
+// validating buffer length
+//    https://github.com/malwarology/sdhash/issues/64
+// ├── 00480000  Stream mode unterminated buffer does not hang
+// ├── 00490000  DD mode unterminated block does not hang
+// ├── 00500000  Stream mode bounded read does not consume unbounded input
+// └── 00510000  DD mode bounded read does not consume unbounded input
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -1383,4 +1393,132 @@ func TestIssue63_AllocationCapRejectsBeforeAllocatingBuffer(t *testing.T) {
 		"sd.buffer must remain unallocated when the allocation cap rejects the request (regression: issue #63)")
 	checkTrue(t, sd.elemCounts == nil,
 		"sd.elemCounts must remain unallocated when the allocation cap rejects the request (regression: issue #63)")
+}
+
+// =========================================================================
+// Issue 64 — ParseReader buffers unbounded attacker-controlled data before
+// validating buffer length
+// https://github.com/malwarology/sdhash/issues/64
+// =========================================================================
+//
+// Parse(string) is unaffected by this finding (its input is already fully
+// in memory), so all tests below exercise ParseReader directly against a
+// crafted io.Reader. The valid-input boundary case that the fix's "+2
+// slack" specifically accommodates — a base64 payload followed by a
+// Windows-style "\r\n" line ending — already has dedicated coverage
+// independent of this issue: TestParse_StreamWithWindowsLineEnding and
+// TestParse_DDWithWindowsLineEnding in sdhash_test.go. It is not duplicated
+// here.
+
+// ---------------------------------------------------------------------------
+// 00480000  Stream mode unterminated buffer does not hang
+// ---------------------------------------------------------------------------
+
+// TestIssue64_StreamModeUnterminatedBufferDoesNotHang verifies that
+// ParseReader terminates against a stream-mode buffer field with no
+// delimiter and no EOF, rather than buffering the input forever. Before the
+// fix, r.ReadString('\n') would never return against this input, since it
+// keeps reading until it finds '\n' or reaches EOF, and this reader
+// supplies neither.
+func TestIssue64_StreamModeUnterminatedBufferDoesNotHang(t *testing.T) {
+	t.Parallel()
+
+	header := "sdbf:03:1:-:512:sha1:256:5:7ff:160:1:160:"
+	r := io.MultiReader(strings.NewReader(header), &infiniteReader{b: 'A'})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := ParseReader(r)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		checkError(t, err,
+			"ParseReader must reject an unterminated stream buffer rather than hanging (regression: issue #64)")
+	case <-time.After(5 * time.Second):
+		t.Fatal("ParseReader did not return within 5s against an unterminated, infinite stream buffer " +
+			"(regression: issue #64) — the read is not bounded")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00490000  DD mode unterminated block does not hang
+// ---------------------------------------------------------------------------
+
+// TestIssue64_DDModeUnterminatedBlockDoesNotHang is the DD-mode analog of
+// TestIssue64_StreamModeUnterminatedBufferDoesNotHang: ParseReader must
+// terminate against a block field with no ':' delimiter and no EOF, rather
+// than buffering the input forever.
+func TestIssue64_DDModeUnterminatedBlockDoesNotHang(t *testing.T) {
+	t.Parallel()
+
+	header := "sdbf-dd:03:1:-:512:sha1:256:5:7ff:192:1:1024:00:"
+	r := io.MultiReader(strings.NewReader(header), &infiniteReader{b: 'A'})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := ParseReader(r)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		checkError(t, err,
+			"ParseReader must reject an unterminated DD block rather than hanging (regression: issue #64)")
+	case <-time.After(5 * time.Second):
+		t.Fatal("ParseReader did not return within 5s against an unterminated, infinite DD block " +
+			"(regression: issue #64) — the read is not bounded")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00500000  Stream mode bounded read does not consume unbounded input
+// ---------------------------------------------------------------------------
+
+// TestIssue64_StreamModeBoundedReadDoesNotConsumeUnboundedInput proves the
+// read is bounded, not merely finite. The tail is 50 MiB — large enough
+// that the pre-fix r.ReadString('\n') would have buffered the whole thing
+// before hitting EOF and failing the length check — but ParseReader must
+// consume only a small, fixed number of bytes from the reader before
+// rejecting it, regardless of how much more data the reader could supply.
+func TestIssue64_StreamModeBoundedReadDoesNotConsumeUnboundedInput(t *testing.T) {
+	t.Parallel()
+
+	header := "sdbf:03:1:-:512:sha1:256:5:7ff:160:1:160:"
+	tail := strings.Repeat("A", 50<<20) // 50 MiB, no delimiter anywhere
+	cr := &countingReader{r: io.MultiReader(strings.NewReader(header), strings.NewReader(tail))}
+
+	_, err := ParseReader(cr)
+	checkError(t, err, "ParseReader must reject an oversized stream buffer (regression: issue #64)")
+
+	// The payload bound itself is only a few hundred bytes; this ceiling is
+	// deliberately generous (bufio's own internal prefetch buffer, plus the
+	// header) while remaining orders of magnitude below the 50 MiB tail.
+	const generousBound = 64 << 10 // 64 KiB
+	checkTrue(t, cr.count < generousBound,
+		fmt.Sprintf("ParseReader must not consume more than %d bytes from the reader; consumed %d "+
+			"(regression: issue #64)", generousBound, cr.count))
+}
+
+// ---------------------------------------------------------------------------
+// 00510000  DD mode bounded read does not consume unbounded input
+// ---------------------------------------------------------------------------
+
+// TestIssue64_DDModeBoundedReadDoesNotConsumeUnboundedInput is the DD-mode
+// analog of TestIssue64_StreamModeBoundedReadDoesNotConsumeUnboundedInput.
+func TestIssue64_DDModeBoundedReadDoesNotConsumeUnboundedInput(t *testing.T) {
+	t.Parallel()
+
+	header := "sdbf-dd:03:1:-:512:sha1:256:5:7ff:192:1:1024:00:"
+	tail := strings.Repeat("A", 50<<20) // 50 MiB, no delimiter anywhere
+	cr := &countingReader{r: io.MultiReader(strings.NewReader(header), strings.NewReader(tail))}
+
+	_, err := ParseReader(cr)
+	checkError(t, err, "ParseReader must reject an oversized DD block (regression: issue #64)")
+
+	const generousBound = 64 << 10 // 64 KiB
+	checkTrue(t, cr.count < generousBound,
+		fmt.Sprintf("ParseReader must not consume more than %d bytes from the reader; consumed %d "+
+			"(regression: issue #64)", generousBound, cr.count))
 }

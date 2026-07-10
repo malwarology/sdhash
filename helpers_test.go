@@ -6,11 +6,47 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"os"
 	"strings"
 	"testing"
 )
+
+// ---------------------------------------------------------------------------
+// io.Reader test doubles
+// ---------------------------------------------------------------------------
+
+// infiniteReader is an io.Reader that supplies an endless stream of the
+// given byte. It never returns an error and never reaches EOF, so it lets
+// tests prove that a read is genuinely *bounded* — an unbounded read (e.g.
+// bufio.Reader.ReadString against a delimiter that never appears) would
+// hang forever against it, rather than merely being slow.
+type infiniteReader struct {
+	b byte
+}
+
+func (r *infiniteReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = r.b
+	}
+	return len(p), nil
+}
+
+// countingReader wraps an io.Reader and records the total number of bytes
+// returned by Read, without altering the underlying data. It lets tests
+// prove a read is bounded by asserting on the actual byte count consumed,
+// rather than inferring boundedness indirectly from timing.
+type countingReader struct {
+	r     io.Reader
+	count int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.count += int64(n)
+	return n, err
+}
 
 // ---------------------------------------------------------------------------
 // Testdata helpers
