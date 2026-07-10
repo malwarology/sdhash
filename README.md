@@ -132,7 +132,7 @@ func ParseReader(io.Reader) (Digest, error)
 
 // Digest is a computed similarity digest.
 type Digest interface {
-    Similarity(Digest) (int, bool)            // similarity score in [0, 100]; false if not comparable
+    Similarity(Digest) (int, bool)       // similarity score in [0, 100]; false if not comparable
     String() string                      // wire-format encoding
     FilterSize() uint64                  // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
@@ -230,15 +230,9 @@ scoring (via `Similarity`) and one in construction (via `New`):
    double-counts positions on runs of equal ranks: a position can be
    incremented by both the fast-forward block and the rescan tail of
    overlapping windows, a distribution no correct per-window minimum
-   produces (issue #57). `New` selects one position per window — the
-   minimum nonzero rank, rightmost of the first consecutive run — and
-   increments it exactly once. Because this changes digest output, its
-   effect appears in scores: over the 1,196-file mixedbag corpus, scoring
-   disagrees with the C++ reference on 9.855% of pairs, of which about
-   3.3% is off-by-one rounding and the substantive remainder is
-   overwhelmingly small-magnitude (2–5) with a fast-descending tail, and
-   no pair where the reference scored a comparison the modern path
-   rejected.
+   produces. `New` selects one position per window — the minimum nonzero
+   rank, rightmost of the first consecutive run — and increments it exactly
+   once.
 
 ## Concurrency
 
@@ -267,9 +261,9 @@ tests for known issues verified against the C++ reference implementation.
 ### Deterministic corpus anchors
 
 Two heavier tests lock digest generation and scoring against deterministic
-SHA-256 anchors. Neither ships reference data — each regenerates its corpus
-in-process from a fixed seed, so any drift in generation, computation, or
-the captured per-row fields changes the anchor and fails the test.
+SHA-256 anchors. Each regenerates its corpus in-process from a fixed seed,
+so any drift in generation, computation, or the captured per-row fields
+changes the anchor and fails the test.
 
 ```bash
 # Digest-generation anchor (normal corpus, stream + DD)
