@@ -104,6 +104,13 @@ import (
 // ├── 00420000  generateChunkSdbf trim-step arithmetic at the reported overflow scale
 // ├── 00430000  sdbfMaxScore offset arithmetic at the reported overflow scale
 // └── 00440000  sdbfMaxScore correctly addresses each filter across the full index range
+//
+// Issue 63 — No allocation cap on DD-mode digest generation — large inputs
+// with small block sizes can produce multi-GiB buffers
+//    https://github.com/malwarology/sdhash/issues/63
+// ├── 00450000  WithBlockSize rejects allocation above the cap
+// ├── 00460000  Allocation cap allows the exact boundary
+// └── 00470000  Allocation cap rejects before allocating the buffer
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -1286,4 +1293,94 @@ func TestIssue62_SdbfMaxScoreCorrectAcrossFullIndexRange(t *testing.T) {
 		checkEqual(t, 1.0, score,
 			fmt.Sprintf("sdbfMaxScore must find a perfect match for filter %d against its own content (regression: issue #62)", i))
 	}
+}
+
+// =========================================================================
+// Issue 63 — No allocation cap on DD-mode digest generation — large inputs
+// with small block sizes can produce multi-GiB buffers
+// https://github.com/malwarology/sdhash/issues/63
+// =========================================================================
+
+// ---------------------------------------------------------------------------
+// 00450000  WithBlockSize rejects allocation above the cap
+// ---------------------------------------------------------------------------
+
+// TestIssue63_WithBlockSizeRejectsAllocationAboveCap verifies, through the
+// public Factory API named in the finding ("a caller — or attacker — who
+// controls WithBlockSize and input size"), that a legitimate-looking large
+// input paired with a small block size is rejected. It must not be allowed
+// to drive an unbounded allocation. ddBlockSize is fixed at the minimum
+// legal value (popWinSize) to minimize the input buffer needed to push
+// bfCount one past maxBfAlloc/bfSize (1,048,576 filters at the real bfSize
+// of 256).
+func TestIssue63_WithBlockSizeRejectsAllocationAboveCap(t *testing.T) {
+	t.Parallel()
+
+	filterCap := maxBfAlloc / bfSize
+	const ddBlockSize = popWinSize
+	buf := make([]byte, (filterCap+1)*ddBlockSize)
+
+	factory, err := New(buf)
+	mustNoError(t, err, "New must accept the buffer itself; only WithBlockSize's Compute should reject it")
+
+	_, err = factory.WithBlockSize(ddBlockSize).Compute()
+	checkError(t, err,
+		"Compute must reject a block size that drives bfCount past maxBfAlloc/bfSize (regression: issue #63)")
+}
+
+// ---------------------------------------------------------------------------
+// 00460000  Allocation cap allows the exact boundary
+// ---------------------------------------------------------------------------
+
+// TestIssue63_AllocationCapAllowsExactBoundary verifies that the cap added in
+// populateSdbf uses a strict greater-than comparison, not >=: a bfCount
+// exactly equal to maxBfAlloc/bfSize must be allowed to proceed rather than
+// being spuriously rejected. This complements
+// TestIssue63_WithBlockSizeRejectsAllocationAboveCap, which only exercises
+// one filter past the boundary.
+//
+// This calls populateSdbf directly (rather than through the public API) to
+// keep the assertion scoped to the guard itself. It also lets the real
+// DD-mode generation run to completion, confirming the digest that comes
+// out the other side of the boundary is valid — not just that no error was
+// raised prematurely.
+func TestIssue63_AllocationCapAllowsExactBoundary(t *testing.T) {
+	t.Parallel()
+
+	filterCap := maxBfAlloc / bfSize
+	const ddBlockSize = popWinSize
+	buf := make([]byte, filterCap*ddBlockSize) // exactly at the cap, with no remainder
+	sd := newTestSdbf(t)
+
+	result, err := populateSdbf(sd, buf, ddBlockSize)
+	mustNoError(t, err,
+		"populateSdbf must not reject a bfCount exactly equal to maxBfAlloc/bfSize (regression: issue #63)")
+	checkEqual(t, uint32(filterCap), result.bfCount, "bfCount must equal the cap exactly, with no filters dropped")
+	checkEqual(t, filterCap*bfSize, len(result.buffer), "buffer length must equal bfCount*bfSize")
+}
+
+// ---------------------------------------------------------------------------
+// 00470000  Allocation cap rejects before allocating the buffer
+// ---------------------------------------------------------------------------
+
+// TestIssue63_AllocationCapRejectsBeforeAllocatingBuffer verifies the fix's
+// specific claim: populateSdbf returns its error "before any allocation
+// occurs". It is not enough for Compute() to eventually return an error —
+// the whole point of the fix is to avoid the multi-GiB make([]byte, ...)
+// call in the first place. This inspects sd.buffer and sd.elemCounts
+// directly after the rejection to confirm neither was ever allocated.
+func TestIssue63_AllocationCapRejectsBeforeAllocatingBuffer(t *testing.T) {
+	t.Parallel()
+
+	filterCap := maxBfAlloc / bfSize
+	const ddBlockSize = popWinSize
+	buf := make([]byte, (filterCap+1)*ddBlockSize)
+	sd := newTestSdbf(t)
+
+	_, err := populateSdbf(sd, buf, ddBlockSize)
+	checkError(t, err, "populateSdbf must reject a bfCount that exceeds maxBfAlloc/bfSize (regression: issue #63)")
+	checkTrue(t, sd.buffer == nil,
+		"sd.buffer must remain unallocated when the allocation cap rejects the request (regression: issue #63)")
+	checkTrue(t, sd.elemCounts == nil,
+		"sd.elemCounts must remain unallocated when the allocation cap rejects the request (regression: issue #63)")
 }
