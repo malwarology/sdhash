@@ -37,28 +37,29 @@ import (
 // IV. generate.go + score.go
 // ├── 00170000  sdbfScore zero bfCount
 // ├── 00180000  sdbfScore denominator zero
-// ├── 00190000  generateChunkSdbf multi-chunk parallel
-// ├── 00200000  generateChunkSdbf chunk size too small
-// ├── 00210000  generateChunkSdbf exactly one chunk
-// ├── 00220000  generateChunkSdbf multi-chunk sparse last filter
-// ├── 00230000  generateChunkSdbf goroutine panic recovery
-// └── 00240000  generateBlockSdbf goroutine panic recovery
+// ├── 00190000  sdbfScore source with no scoreable target
+// ├── 00200000  generateChunkSdbf multi-chunk parallel
+// ├── 00210000  generateChunkSdbf chunk size too small
+// ├── 00220000  generateChunkSdbf exactly one chunk
+// ├── 00230000  generateChunkSdbf multi-chunk sparse last filter
+// ├── 00240000  generateChunkSdbf goroutine panic recovery
+// └── 00250000  generateBlockSdbf goroutine panic recovery
 //
 // V. sdhash.go
-// ├── 00250000  Parse error cases
-// ├── 00260000  Parse stream without trailing newline
-// ├── 00270000  FeatureDensity zero-filled
-// ├── 00280000  FeatureDensity high entropy
-// ├── 00290000  FeatureDensity DD mode
-// ├── 00300000  FeatureDensity parsed digest
-// ├── 00310000  FeatureDensity zero origFileSize
-// ├── 00320000  ParseReader multiple digests
-// ├── 00330000  Parse stream with Windows line ending
-// └── 00340000  Parse DD with Windows line ending
+// ├── 00260000  Parse error cases
+// ├── 00270000  Parse stream without trailing newline
+// ├── 00280000  FeatureDensity zero-filled
+// ├── 00290000  FeatureDensity high entropy
+// ├── 00300000  FeatureDensity DD mode
+// ├── 00310000  FeatureDensity parsed digest
+// ├── 00320000  FeatureDensity zero origFileSize
+// ├── 00330000  ParseReader multiple digests
+// ├── 00340000  Parse stream with Windows line ending
+// └── 00350000  Parse DD with Windows line ending
 //
 // VI. factory.go
-// ├── 00350000  populateSdbf stream mode error propagation
-// └── 00360000  populateSdbf block mode error propagation
+// ├── 00360000  populateSdbf stream mode error propagation
+// └── 00370000  populateSdbf block mode error propagation
 
 // =========================================================================
 // I. General
@@ -461,7 +462,43 @@ func TestSdbfScore_DenominatorZero(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00190000  generateChunkSdbf multi-chunk parallel
+// 00190000  sdbfScore source with no scoreable target
+// ---------------------------------------------------------------------------
+
+// TestSdbfScore_NoScoreableTarget exercises the s < 0 branch in sdbfScore's
+// accumulation loop, where a source filter has enough elements to be scored but
+// no target filter does. In that case sdbfMaxScore returns -1 and the filter is
+// excluded via noTargetCount (as opposed to the sparseCount path covered by
+// TestSdbfScore_DenominatorZero). The source is a single filter with 32 elements;
+// the target has two filters that are both too sparse (element count 0 <
+// minElemCount), so the lone source-filter lookup finds no scoreable target.
+// With the only source filter excluded the denominator is zero, so the
+// comparison is reported as not meaningful. Two target filters are used so the
+// equal-count tiebreaker does not swap the operands.
+func TestSdbfScore_NoScoreableTarget(t *testing.T) {
+	t.Parallel()
+
+	b64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
+	// Source: one filter with element count 0x20 (32 ≥ minElemCount).
+	src := "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:20:" + b64 + "\n"
+	// Target: two filters, both element count 0 (< minElemCount) → all sparse.
+	tgt := "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:00:" + b64 + ":00:" + b64 + "\n"
+
+	srcSd, err := Parse(src)
+	mustNoError(t, err, "parsing the single-filter source digest must succeed")
+	tgtSd, err := Parse(tgt)
+	mustNoError(t, err, "parsing the all-sparse target digest must succeed")
+
+	checkEqual(t, uint32(1), srcSd.FilterCount(), "source must have one filter")
+	checkEqual(t, uint32(2), tgtSd.FilterCount(), "target must have two filters")
+
+	_, ok := srcSd.Similarity(tgtSd)
+	checkTrue(t, !ok,
+		"a source filter whose only candidates are all too sparse must yield no meaningful comparison (noTargetCount path)")
+}
+
+// ---------------------------------------------------------------------------
+// 00200000  generateChunkSdbf multi-chunk parallel
 // ---------------------------------------------------------------------------
 
 // TestGenerateChunkSdbf_MultiChunk exercises the parallel goroutine phase by
@@ -490,7 +527,7 @@ func TestGenerateChunkSdbf_MultiChunk(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00200000  generateChunkSdbf chunk size too small
+// 00210000  generateChunkSdbf chunk size too small
 // ---------------------------------------------------------------------------
 
 // TestGenerateChunkSdbf_ChunkSizeTooSmall verifies that generateChunkSdbf
@@ -507,7 +544,7 @@ func TestGenerateChunkSdbf_ChunkSizeTooSmall(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00210000  generateChunkSdbf exactly one chunk
+// 00220000  generateChunkSdbf exactly one chunk
 // ---------------------------------------------------------------------------
 
 // TestGenerateChunkSdbf_ExactlyOneChunk exercises the qt==1 branch inside the
@@ -532,7 +569,7 @@ func TestGenerateChunkSdbf_ExactlyOneChunk(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00220000  generateChunkSdbf multi-chunk sparse last filter
+// 00230000  generateChunkSdbf multi-chunk sparse last filter
 // ---------------------------------------------------------------------------
 
 // TestGenerateChunkSdbf_MultiChunk_SparseLastFilter exercises the "drop last
@@ -568,7 +605,7 @@ func TestGenerateChunkSdbf_MultiChunk_SparseLastFilter(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00230000  generateChunkSdbf goroutine panic recovery
+// 00240000  generateChunkSdbf goroutine panic recovery
 // ---------------------------------------------------------------------------
 
 // TestGenerateChunkSdbf_GoroutinePanicRecovery verifies that a panic inside a
@@ -597,7 +634,7 @@ func TestGenerateChunkSdbf_GoroutinePanicRecovery(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00240000  generateBlockSdbf goroutine panic recovery
+// 00250000  generateBlockSdbf goroutine panic recovery
 // ---------------------------------------------------------------------------
 
 // TestGenerateBlockSdbf_GoroutinePanicRecovery verifies that a panic inside a
@@ -633,13 +670,19 @@ func TestGenerateBlockSdbf_GoroutinePanicRecovery(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00250000  Parse error cases
+// 00260000  Parse error cases
 // ---------------------------------------------------------------------------
 
 func TestParse_ErrorCases(t *testing.T) {
 	t.Parallel()
 
 	validB64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
+
+	// A 257-byte block encodes to exactly base64.StdEncoding.EncodedLen(256)==344
+	// characters (256, 257, and 258 bytes all encode to 344 chars), so it passes
+	// the encoded-length check and decodes cleanly, but yields 257 bytes instead
+	// of bfSize==256 — exercising the decoded-length mismatch branch.
+	decodedLenMismatchB64 := base64.StdEncoding.EncodeToString(make([]byte, 257))
 
 	cases := []struct {
 		name  string
@@ -656,6 +699,7 @@ func TestParse_ErrorCases(t *testing.T) {
 		{"DD invalid hex elem count", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:zz:" + validB64 + "\n"},
 		{"DD invalid base64 block data", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:c0:!!invalid!!\n"},
 		{"DD invalid base64 content correct length", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:c0:" + strings.Repeat("!", 344) + "\n"},
+		{"DD decoded block length mismatch", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:c0:" + decodedLenMismatchB64 + "\n"},
 		{"truncated after version", "sdbf:03:"},
 		{"truncated after namelen", "sdbf:03:1:"},
 		{"truncated after origFileSize", "sdbf:03:1:-:1048576:"},
@@ -678,7 +722,7 @@ func TestParse_ErrorCases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00260000  Parse stream without trailing newline
+// 00270000  Parse stream without trailing newline
 // ---------------------------------------------------------------------------
 
 // TestParse_StreamWithoutTrailingNewline verifies that a digest string
@@ -699,7 +743,7 @@ func TestParse_StreamWithoutTrailingNewline(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00270000  FeatureDensity zero-filled
+// 00280000  FeatureDensity zero-filled
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroFilled verifies that a zero-filled buffer produces
@@ -714,7 +758,7 @@ func TestFeatureDensity_ZeroFilled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00280000  FeatureDensity high entropy
+// 00290000  FeatureDensity high entropy
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_HighEntropy verifies that a high-entropy random buffer
@@ -729,7 +773,7 @@ func TestFeatureDensity_HighEntropy(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00290000  FeatureDensity DD mode
+// 00300000  FeatureDensity DD mode
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_DDMode verifies that FeatureDensity works correctly in
@@ -744,7 +788,7 @@ func TestFeatureDensity_DDMode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00300000  FeatureDensity parsed digest
+// 00310000  FeatureDensity parsed digest
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ParsedDigest verifies that FeatureDensity is correct on
@@ -760,7 +804,7 @@ func TestFeatureDensity_ParsedDigest(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00310000  FeatureDensity zero origFileSize
+// 00320000  FeatureDensity zero origFileSize
 // ---------------------------------------------------------------------------
 
 // TestFeatureDensity_ZeroOrigFileSize verifies that FeatureDensity returns 0
@@ -779,7 +823,7 @@ func TestFeatureDensity_ZeroOrigFileSize(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00320000  ParseReader multiple digests
+// 00330000  ParseReader multiple digests
 // ---------------------------------------------------------------------------
 
 // TestParseReader_MultipleDigests verifies that ParseReader
@@ -814,7 +858,7 @@ func TestParseReader_MultipleDigests(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00330000  Parse stream with Windows line ending
+// 00340000  Parse stream with Windows line ending
 // ---------------------------------------------------------------------------
 
 // TestParse_StreamWithWindowsLineEnding verifies that a stream digest
@@ -839,7 +883,7 @@ func TestParse_StreamWithWindowsLineEnding(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00340000  Parse DD with Windows line ending
+// 00350000  Parse DD with Windows line ending
 // ---------------------------------------------------------------------------
 
 // TestParse_DDWithWindowsLineEnding verifies that a DD digest string
@@ -868,7 +912,7 @@ func TestParse_DDWithWindowsLineEnding(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00350000  populateSdbf stream mode error propagation
+// 00360000  populateSdbf stream mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_StreamModeErrorPropagation verifies that an error returned
@@ -899,7 +943,7 @@ func TestPopulateSdbf_StreamModeErrorPropagation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00360000  populateSdbf block mode error propagation
+// 00370000  populateSdbf block mode error propagation
 // ---------------------------------------------------------------------------
 
 // TestPopulateSdbf_BlockModeErrorPropagation verifies that an error returned
