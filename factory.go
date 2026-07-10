@@ -23,6 +23,9 @@ func populateSdbf(sd *sdbf, buffer []byte, ddBlockSize uint32) (*sdbf, error) {
 		if fileSize%uint64(ddBlockSize) >= MinFileSize {
 			ddBlockCnt++
 		}
+		if ddBlockCnt > maxBfAlloc/uint64(bfSize) {
+			return nil, fmt.Errorf("bloom filter allocation too large: %d filters × %d bytes exceeds %d byte limit (input too large for block size %d)", ddBlockCnt, bfSize, maxBfAlloc, ddBlockSize)
+		}
 		sd.bfCount = uint32(ddBlockCnt)
 		sd.ddBlockSize = ddBlockSize
 		sd.buffer = make([]byte, ddBlockCnt*uint64(bfSize))

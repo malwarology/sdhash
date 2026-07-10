@@ -39,6 +39,13 @@ const (
 	sdbfVersion = 3
 	magicDD     = "sdbf-dd"
 
+	// maxBfAlloc is the maximum total bytes (bfCount * bfSize) allowed for a
+	// digest's bloom filter buffer. It bounds both digest generation (DD/block
+	// mode, where bfCount is derived from input size / block size) and digest
+	// parsing (where bfCount is attacker-controlled wire data), preventing
+	// unbounded or overflow-adjacent allocations from a single input.
+	maxBfAlloc = 256 * 1024 * 1024
+
 	defaultMask      = 0x7FF
 	defaultHashCount = 5
 )

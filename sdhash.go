@@ -262,7 +262,6 @@ func ParseReader(reader io.Reader) (Digest, error) {
 		return nil, fmt.Errorf("failed to read bloom filter count: %w", err)
 	}
 
-	const maxBfAlloc = 256 * 1024 * 1024
 	if parsedBfSize == 0 {
 		return nil, errors.New("bloom filter size must be greater than zero")
 	}
