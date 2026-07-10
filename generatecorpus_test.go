@@ -1368,7 +1368,6 @@ func genELF(rng *rand.Rand, size int) []byte {
 		pt := phTypes[rng.IntN(len(phTypes))]
 		fileOff := uint64(headerRegion) + uint64(i)*segSize
 		vaddr := uint64(0x400000) + fileOff
-		//goland:noinspection DuplicatedCode
 		if is64 {
 			put32(buf[h:], pt)          // p_type
 			put32(buf[h+4:], 5)         // p_flags R|X
@@ -1492,7 +1491,6 @@ func genELF(rng *rand.Rand, size int) []byte {
 		if h+shEntSize > len(buf) {
 			return
 		}
-		//goland:noinspection DuplicatedCode
 		if is64 {
 			put32(buf[h:], nameOff)
 			put32(buf[h+4:], uint32(shType))

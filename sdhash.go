@@ -18,8 +18,6 @@ import (
 // Sdbf values are immutable after construction. Every method is safe for
 // concurrent use by multiple goroutines because no field is ever written
 // after the factory returns.
-//
-//goland:noinspection GoDeprecation
 type Sdbf interface {
 
 	// FilterSize returns the total byte size of the bloom filter data within this Sdbf.

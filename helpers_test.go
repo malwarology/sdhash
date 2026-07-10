@@ -266,8 +266,6 @@ func chunkScoresOf(ranks []uint16) []uint16 {
 // (only if its rank is > 0). It carries no state between windows, so it cannot
 // reproduce the pre-fix double-count; a correct generateChunkScores must match
 // it on every input.
-//
-//goland:noinspection DuplicatedCode
 func bruteScoresFirstRun(ranks []uint16) []uint16 {
 	scores := make([]uint16, len(ranks))
 	chunkSize := uint64(len(ranks))

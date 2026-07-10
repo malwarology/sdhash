@@ -6,8 +6,6 @@ import "math"
 // Both digests must have their hamming weights pre-computed (guaranteed after construction).
 // Returns -1 if the comparison cannot be performed (no filters, or no filter pair
 // produced a valid comparison).
-//
-//goland:noinspection DuplicatedCode
 func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	bfCount1 := sdbf1.bfCount
 
