@@ -45,16 +45,16 @@ import (
 // └── 00240000  generateBlockSdbf goroutine panic recovery
 //
 // V. sdhash.go
-// ├── 00250000  ParseSdbfFromString error cases
-// ├── 00260000  ParseSdbfFromString stream without trailing newline
+// ├── 00250000  Parse error cases
+// ├── 00260000  Parse stream without trailing newline
 // ├── 00270000  FeatureDensity zero-filled
 // ├── 00280000  FeatureDensity high entropy
 // ├── 00290000  FeatureDensity DD mode
 // ├── 00300000  FeatureDensity parsed digest
 // ├── 00310000  FeatureDensity zero origFileSize
-// ├── 00320000  ParseSdbfFromReader multiple digests
-// ├── 00330000  ParseSdbfFromString stream with Windows line ending
-// └── 00340000  ParseSdbfFromString DD with Windows line ending
+// ├── 00320000  ParseReader multiple digests
+// ├── 00330000  Parse stream with Windows line ending
+// └── 00340000  Parse DD with Windows line ending
 //
 // VI. factory.go
 // ├── 00350000  populateSdbf stream mode error propagation
@@ -114,7 +114,7 @@ func TestStreamMode_SelfComparison(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 1, 1)
 	sd := streamDigest(t, buf)
-	score, ok := sd.Compare(sd)
+	score, ok := sd.Similarity(sd)
 	checkTrue(t, ok, "self-comparison must be comparable")
 	checkEqual(t, 100, score, "self-comparison must return 100")
 }
@@ -140,7 +140,7 @@ func TestDDMode_SelfComparison(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 1, 1)
 	sd := ddDigest(t, buf, 1024)
-	score, ok := sd.Compare(sd)
+	score, ok := sd.Similarity(sd)
 	checkTrue(t, ok, "DD self-comparison must be comparable")
 	checkEqual(t, 100, score, "DD self-comparison must return 100")
 }
@@ -154,11 +154,11 @@ func TestRoundTrip_Stream(t *testing.T) {
 	buf := randomBuf(1<<20, 1, 1)
 	original := streamDigest(t, buf)
 
-	parsed, err := ParseSdbfFromString(original.String())
-	mustNoError(t, err, "ParseSdbfFromString must succeed on a valid stream digest string")
+	parsed, err := Parse(original.String())
+	mustNoError(t, err, "Parse must succeed on a valid stream digest string")
 
 	checkEqual(t, original.String(), parsed.String(), "round-tripped string must be identical")
-	score, ok := parsed.Compare(original)
+	score, ok := parsed.Similarity(original)
 	checkTrue(t, ok, "round-tripped digest must be comparable")
 	checkEqual(t, 100, score, "round-tripped digest must score 100 against original")
 }
@@ -172,11 +172,11 @@ func TestRoundTrip_DD(t *testing.T) {
 	buf := randomBuf(1<<20, 1, 1)
 	original := ddDigest(t, buf, 1024)
 
-	parsed, err := ParseSdbfFromString(original.String())
-	mustNoError(t, err, "ParseSdbfFromString must succeed on a valid DD digest string")
+	parsed, err := Parse(original.String())
+	mustNoError(t, err, "Parse must succeed on a valid DD digest string")
 
 	checkEqual(t, original.String(), parsed.String(), "round-tripped string must be identical")
-	score, ok := parsed.Compare(original)
+	score, ok := parsed.Similarity(original)
 	checkTrue(t, ok, "round-tripped digest must be comparable")
 	checkEqual(t, 100, score, "round-tripped digest must score 100 against original")
 }
@@ -193,8 +193,8 @@ func TestCrossMode_DoesNotPanic(t *testing.T) {
 
 	var score int
 	var ok bool
-	checkNotPanics(t, func() { score, ok = stream.Compare(dd) }, "cross-mode Compare must not panic")
-	checkTrue(t, ok, "cross-mode Compare must be meaningful")
+	checkNotPanics(t, func() { score, ok = stream.Similarity(dd) }, "cross-mode Similarity must not panic")
+	checkTrue(t, ok, "cross-mode Similarity must be meaningful")
 	checkAtLeast(t, score, 0, "cross-mode score must be >= 0")
 	checkAtMost(t, score, 100, "cross-mode score must be <= 100")
 }
@@ -212,7 +212,7 @@ func TestDissimilarData_ScoresLow(t *testing.T) {
 	// sdhash can return 1 on fully dissimilar random data due to floating-point
 	// rounding in the final score calculation. The important invariant is that the
 	// score is very low (effectively 0), not that it is exactly 0.
-	score, ok := sd1.Compare(sd2)
+	score, ok := sd1.Similarity(sd2)
 	checkTrue(t, ok, "dissimilar data must be comparable")
 	checkAtMost(t, score, 1, "dissimilar buffers must score 0 or 1")
 }
@@ -238,7 +238,7 @@ func TestSimilarData_ScoresHigh(t *testing.T) {
 
 	sd1 := streamDigest(t, buf1)
 	sd2 := streamDigest(t, buf2)
-	score, ok := sd1.Compare(sd2)
+	score, ok := sd1.Similarity(sd2)
 	checkTrue(t, ok, "similar data must be comparable")
 	checkGreater(t, score, 0, "lightly modified buffer must score > 0")
 }
@@ -250,7 +250,7 @@ func TestSimilarData_ScoresHigh(t *testing.T) {
 func TestConcurrent_ComputeMultiple(t *testing.T) {
 	t.Parallel()
 	const goroutines = 10
-	results := make([]Sdbf, goroutines)
+	results := make([]Digest, goroutines)
 	errs := make([]error, goroutines)
 
 	var wg sync.WaitGroup
@@ -289,7 +289,7 @@ func TestConcurrent_Compare(t *testing.T) {
 	buf2 := randomBuf(1<<20, 1, 1) // same seed → same data → score 100
 	sd1 := streamDigest(t, buf1)
 	sd2 := streamDigest(t, buf2)
-	expected, ok := sd1.Compare(sd2)
+	expected, ok := sd1.Similarity(sd2)
 	checkTrue(t, ok, "initial comparison must be comparable")
 
 	const goroutines = 20
@@ -299,14 +299,14 @@ func TestConcurrent_Compare(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			scores[idx], _ = sd1.Compare(sd2)
+			scores[idx], _ = sd1.Similarity(sd2)
 		}(i)
 	}
 	wg.Wait()
 
 	for i, score := range scores {
 		checkEqual(t, expected, score,
-			fmt.Sprintf("concurrent Compare result must be consistent (goroutine %d)", i))
+			fmt.Sprintf("concurrent Similarity result must be consistent (goroutine %d)", i))
 	}
 }
 
@@ -428,13 +428,13 @@ func TestSdbfScore_ZeroBfCount(t *testing.T) {
 	t.Parallel()
 
 	emptyStream := "sdbf:03:1:-:1048576:sha1:256:5:7ff:160:0:0:\n"
-	sd, err := ParseSdbfFromString(emptyStream)
+	sd, err := Parse(emptyStream)
 	mustNoError(t, err, "parsing a bfCount=0 stream digest must succeed")
 
 	checkEqual(t, uint32(0), sd.FilterCount(), "FilterCount must be 0")
-	_, ok := sd.Compare(sd)
+	_, ok := sd.Similarity(sd)
 	checkTrue(t, !ok,
-		"Compare on a zero-filter digest must not be comparable")
+		"Similarity on a zero-filter digest must not be comparable")
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +451,7 @@ func TestSdbfScore_DenominatorZero(t *testing.T) {
 	ddStr := "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:00:" +
 		b64 + ":00:" + b64 + "\n"
 
-	sd, err := ParseSdbfFromString(ddStr)
+	sd, err := Parse(ddStr)
 	mustNoError(t, err, "parsing a 2-filter DD digest with zero elem counts must succeed")
 
 	checkEqual(t, uint32(2), sd.FilterCount(), "FilterCount must be 2")
@@ -633,7 +633,7 @@ func TestGenerateBlockSdbf_GoroutinePanicRecovery(t *testing.T) {
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00250000  ParseSdbfFromString error cases
+// 00250000  Parse error cases
 // ---------------------------------------------------------------------------
 
 func TestParseSdbf_ErrorCases(t *testing.T) {
@@ -672,14 +672,14 @@ func TestParseSdbf_ErrorCases(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := ParseSdbfFromString(tc.input)
+			_, err := Parse(tc.input)
 			checkError(t, err, fmt.Sprintf("expected an error for case %q", tc.name))
 		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 00260000  ParseSdbfFromString stream without trailing newline
+// 00260000  Parse stream without trailing newline
 // ---------------------------------------------------------------------------
 
 // TestParseSdbf_StreamWithoutTrailingNewline verifies that a digest string
@@ -693,8 +693,8 @@ func TestParseSdbf_StreamWithoutTrailingNewline(t *testing.T) {
 	withoutNewline := strings.TrimRight(sd.String(), "\n")
 	checkTrue(t, !strings.HasSuffix(withoutNewline, "\n"), "test string must not end with newline")
 
-	parsed, err := ParseSdbfFromString(withoutNewline)
-	mustNoError(t, err, "ParseSdbfFromString must succeed without trailing newline")
+	parsed, err := Parse(withoutNewline)
+	mustNoError(t, err, "Parse must succeed without trailing newline")
 	checkEqual(t, sd.String(), parsed.String(),
 		"digest parsed without trailing newline must be identical to original")
 }
@@ -754,7 +754,7 @@ func TestFeatureDensity_ParsedDigest(t *testing.T) {
 	t.Parallel()
 	buf := randomBuf(1<<20, 3, 3)
 	original := streamDigest(t, buf)
-	parsed, err := ParseSdbfFromString(original.String())
+	parsed, err := Parse(original.String())
 	mustNoError(t, err)
 	checkEqual(t, original.FeatureDensity(), parsed.FeatureDensity(),
 		"FeatureDensity must survive a round-trip through String/Parse")
@@ -773,20 +773,20 @@ func TestFeatureDensity_ZeroOrigFileSize(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
 	zeroSizeStream := "sdbf:03:1:-:0:sha1:256:5:7ff:160:1:42:" + b64 + "\n"
 
-	sd, err := ParseSdbfFromString(zeroSizeStream)
+	sd, err := Parse(zeroSizeStream)
 	mustNoError(t, err, "parsing a stream digest with origFileSize=0 must succeed")
 	checkEqual(t, float64(0), sd.FeatureDensity(),
 		"FeatureDensity must return 0 when origFileSize is 0")
 }
 
 // ---------------------------------------------------------------------------
-// 00320000  ParseSdbfFromReader multiple digests
+// 00320000  ParseReader multiple digests
 // ---------------------------------------------------------------------------
 
-// TestParseSdbfFromReader_MultipleDigests verifies that ParseSdbfFromReader
+// TestParseReader_MultipleDigests verifies that ParseReader
 // correctly parses multiple digests sequentially from a single reader, and
 // returns an error once all digests have been consumed.
-func TestParseSdbfFromReader_MultipleDigests(t *testing.T) {
+func TestParseReader_MultipleDigests(t *testing.T) {
 	t.Parallel()
 	buf1 := randomBuf(1<<20, 1, 1)
 	buf2 := randomBuf(1<<20, 2, 2)
@@ -798,24 +798,24 @@ func TestParseSdbfFromReader_MultipleDigests(t *testing.T) {
 	concatenated := sd1.String() + sd2.String() + sd3.String()
 	r := bufio.NewReader(strings.NewReader(concatenated))
 
-	parsed1, err := ParseSdbfFromReader(r)
-	mustNoError(t, err, "first ParseSdbfFromReader must succeed")
+	parsed1, err := ParseReader(r)
+	mustNoError(t, err, "first ParseReader must succeed")
 	checkEqual(t, sd1.String(), parsed1.String(), "first parsed digest must match original")
 
-	parsed2, err := ParseSdbfFromReader(r)
-	mustNoError(t, err, "second ParseSdbfFromReader must succeed")
+	parsed2, err := ParseReader(r)
+	mustNoError(t, err, "second ParseReader must succeed")
 	checkEqual(t, sd2.String(), parsed2.String(), "second parsed digest must match original")
 
-	parsed3, err := ParseSdbfFromReader(r)
-	mustNoError(t, err, "third ParseSdbfFromReader must succeed")
+	parsed3, err := ParseReader(r)
+	mustNoError(t, err, "third ParseReader must succeed")
 	checkEqual(t, sd3.String(), parsed3.String(), "third parsed digest must match original")
 
-	_, err = ParseSdbfFromReader(r)
-	checkError(t, err, "fourth ParseSdbfFromReader must return an error at EOF")
+	_, err = ParseReader(r)
+	checkError(t, err, "fourth ParseReader must return an error at EOF")
 }
 
 // ---------------------------------------------------------------------------
-// 00330000  ParseSdbfFromString stream with Windows line ending
+// 00330000  Parse stream with Windows line ending
 // ---------------------------------------------------------------------------
 
 // TestParseSdbf_StreamWithWindowsLineEnding verifies that a stream digest
@@ -829,18 +829,18 @@ func TestParseSdbf_StreamWithWindowsLineEnding(t *testing.T) {
 	original := sd.String()
 	withCRLF := strings.TrimRight(original, "\n") + "\r\n"
 
-	parsed, err := ParseSdbfFromString(withCRLF)
-	mustNoError(t, err, "ParseSdbfFromString must succeed with Windows line ending")
+	parsed, err := Parse(withCRLF)
+	mustNoError(t, err, "Parse must succeed with Windows line ending")
 	checkEqual(t, original, parsed.String(),
 		"digest parsed from Windows line ending must produce canonical newline output")
 
-	score, ok := parsed.Compare(parsed)
+	score, ok := parsed.Similarity(parsed)
 	checkTrue(t, ok, "self-comparison must be comparable")
 	checkEqual(t, 100, score, "self-comparison must return 100")
 }
 
 // ---------------------------------------------------------------------------
-// 00340000  ParseSdbfFromString DD with Windows line ending
+// 00340000  Parse DD with Windows line ending
 // ---------------------------------------------------------------------------
 
 // TestParseSdbf_DDWithWindowsLineEnding verifies that a DD digest string
@@ -854,12 +854,12 @@ func TestParseSdbf_DDWithWindowsLineEnding(t *testing.T) {
 	original := sd.String()
 	withCRLF := strings.TrimRight(original, "\n") + "\r\n"
 
-	parsed, err := ParseSdbfFromString(withCRLF)
-	mustNoError(t, err, "ParseSdbfFromString must succeed with Windows line ending")
+	parsed, err := Parse(withCRLF)
+	mustNoError(t, err, "Parse must succeed with Windows line ending")
 	checkEqual(t, original, parsed.String(),
 		"digest parsed from Windows line ending must produce canonical newline output")
 
-	score, ok := parsed.Compare(parsed)
+	score, ok := parsed.Similarity(parsed)
 	checkTrue(t, ok, "self-comparison must be comparable")
 	checkEqual(t, 100, score, "self-comparison must return 100")
 }

@@ -75,7 +75,7 @@ func bfInsertSha1(bf []byte, sha1Hash [5]uint32) uint32 {
 }
 
 // andPopcount returns the number of bits set in the AND of two 256-byte bloom
-// filters. The function is the innermost hot loop of the Compare path and is
+// filters. The function is the innermost hot loop of the Similarity path and is
 // implemented using 64-bit-wide popcount.
 //
 // OPTIMIZATION: The previous implementation iterated 256 times calling

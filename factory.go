@@ -48,20 +48,20 @@ func createSdbf(buffer []byte, ddBlockSize uint32) (*sdbf, error) {
 	}, buffer, ddBlockSize)
 }
 
-// SdbfFactory creates a Sdbf digest from a binary source.
+// Factory creates a Digest from a binary source.
 // Use WithBlockSize to configure the factory before calling Compute.
 //
 // Factories are immutable: WithBlockSize returns a new factory rather than
 // modifying the receiver, so all methods are inherently safe for concurrent use.
-type SdbfFactory interface {
+type Factory interface {
 
 	// WithBlockSize sets the block size for block-aligned (dd) mode and returns
 	// a new factory with that configuration applied. A value of 0 (the default)
 	// produces a digest in stream mode.
-	WithBlockSize(blockSize uint32) SdbfFactory
+	WithBlockSize(blockSize uint32) Factory
 
-	// Compute runs the digesting process and returns the resulting Sdbf.
-	Compute() (Sdbf, error)
+	// Compute runs the digesting process and returns the resulting Digest.
+	Compute() (Digest, error)
 }
 
 type sdbfFactory struct {
@@ -69,9 +69,9 @@ type sdbfFactory struct {
 	ddBlockSize uint32
 }
 
-// New returns a factory that will produce a Sdbf from the given byte slice.
+// New returns a factory that will produce a Digest from the given byte slice.
 // The slice must be at least MinFileSize bytes.
-func New(buffer []byte) (SdbfFactory, error) {
+func New(buffer []byte) (Factory, error) {
 	if len(buffer) < MinFileSize {
 		return nil, fmt.Errorf("buffer length must be at least %d bytes", MinFileSize)
 	}
@@ -86,13 +86,13 @@ func New(buffer []byte) (SdbfFactory, error) {
 
 // WithBlockSize returns a new factory with the given block size configured.
 // It does not modify the receiver.
-func (sdf *sdbfFactory) WithBlockSize(blockSize uint32) SdbfFactory {
+func (sdf *sdbfFactory) WithBlockSize(blockSize uint32) Factory {
 	return &sdbfFactory{
 		buffer:      sdf.buffer,
 		ddBlockSize: blockSize,
 	}
 }
 
-func (sdf *sdbfFactory) Compute() (Sdbf, error) {
+func (sdf *sdbfFactory) Compute() (Digest, error) {
 	return createSdbf(sdf.buffer, sdf.ddBlockSize)
 }

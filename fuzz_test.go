@@ -11,9 +11,9 @@ import (
 // Saved corpus entries in testdata/fuzz/ are replayed as regression tests
 // by go test automatically. No -fuzz flag needed for replay.
 //
-// Run fuzzer: go test -run='^$' -fuzz=FuzzParseSdbfFromString -fuzztime=30s ./...
+// Run fuzzer: go test -run='^$' -fuzz=FuzzParse -fuzztime=30s ./...
 //
-// Issue 23 — ParseSdbfFromString: base64.Decode panics on malformed DD block payload
+// Issue 23 — Parse: base64.Decode panics on malformed DD block payload
 //    https://github.com/malwarology/sdhash/issues/23
 // └── dec42c3bb0b43d05  Malformed base64 content triggers decodeQuantum OOB
 //
@@ -23,7 +23,7 @@ import (
 //
 // Run fuzzer: go test -run='^$' -fuzz=FuzzCompute -fuzztime=30s ./...
 //
-// FuzzRoundTrip — New / Compute / String / ParseSdbfFromString:
+// FuzzRoundTrip — New / Compute / String / Parse:
 // verifies that any digest that can be computed and serialized can be parsed
 // back to an identical string. A failure here indicates a serialization or
 // parse inconsistency.
@@ -31,7 +31,7 @@ import (
 //
 // Run fuzzer: go test -run='^$' -fuzz=FuzzRoundTrip -fuzztime=30s ./...
 
-func FuzzParseSdbfFromString(f *testing.F) {
+func FuzzParse(f *testing.F) {
 	// 1. Valid stream digest
 	payload256 := base64.StdEncoding.EncodeToString(make([]byte, 256))
 	f.Add(fmt.Sprintf("sdbf:03:1:-:1048576:sha1:256:5:7ff:160:1:100:%s\n", payload256))
@@ -65,7 +65,7 @@ func FuzzParseSdbfFromString(f *testing.F) {
 	f.Add("badmagic:03:1:-:1048576:sha1:256:5:7ff:160:1:100:\n")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		sd, err := ParseSdbfFromString(input)
+		sd, err := Parse(input)
 		if err != nil {
 			return // parse errors are expected and fine — panics are not
 		}
@@ -75,7 +75,7 @@ func FuzzParseSdbfFromString(f *testing.F) {
 		_ = sd.InputSize()
 		_ = sd.FilterCount()
 		_ = sd.FeatureDensity()
-		_, _ = sd.Compare(sd)
+		_, _ = sd.Similarity(sd)
 	})
 }
 
@@ -105,7 +105,7 @@ func FuzzCompute(f *testing.F) {
 		_ = sd.InputSize()
 		_ = sd.FilterCount()
 		_ = sd.FeatureDensity()
-		_, _ = sd.Compare(sd)
+		_, _ = sd.Similarity(sd)
 
 		// DD mode with a block size that is valid for any input that passed MinFileSize
 		dd, err := factory.WithBlockSize(512).Compute()
@@ -114,7 +114,7 @@ func FuzzCompute(f *testing.F) {
 		}
 		_ = dd.String()
 		_ = dd.FeatureDensity()
-		_, _ = dd.Compare(dd)
+		_, _ = dd.Similarity(dd)
 	})
 }
 
@@ -140,7 +140,7 @@ func FuzzRoundTrip(f *testing.F) {
 
 		original := sd.String()
 
-		parsed, err := ParseSdbfFromString(original)
+		parsed, err := Parse(original)
 		if err != nil {
 			t.Fatalf("round-trip parse failed: %v", err)
 		}

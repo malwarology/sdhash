@@ -208,7 +208,7 @@ func randomBuf(size int, seed1, seed2 uint64) []byte {
 }
 
 // streamDigest computes a stream-mode digest for buf and stops the test on error.
-func streamDigest(t *testing.T, buf []byte) Sdbf {
+func streamDigest(t *testing.T, buf []byte) Digest {
 	t.Helper()
 	factory, err := New(buf)
 	mustNoError(t, err)
@@ -218,7 +218,7 @@ func streamDigest(t *testing.T, buf []byte) Sdbf {
 }
 
 // ddDigest computes a DD-mode digest for buf with the given block size and stops the test on error.
-func ddDigest(t *testing.T, buf []byte, blockSize uint32) Sdbf {
+func ddDigest(t *testing.T, buf []byte, blockSize uint32) Digest {
 	t.Helper()
 	factory, err := New(buf)
 	mustNoError(t, err)

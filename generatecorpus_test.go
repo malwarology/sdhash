@@ -3498,7 +3498,7 @@ func planMixedbagCorpus(globalMin, globalMax, totalCount int, cats []genCatConfi
 
 // computeStreamDigest computes a stream-mode digest, matching sdhashtest's
 // computeDigest(path, 0).
-func computeStreamDigest(data []byte) (Sdbf, error) {
+func computeStreamDigest(data []byte) (Digest, error) {
 	factory, err := New(data)
 	if err != nil {
 		return nil, err
@@ -3508,7 +3508,7 @@ func computeStreamDigest(data []byte) (Sdbf, error) {
 
 // computeDDDigest computes a DD-mode digest at corpusDDBlock, matching
 // sdhashtest's computeDigest(path, ddBlockSize).
-func computeDDDigest(data []byte) (Sdbf, error) {
+func computeDDDigest(data []byte) (Digest, error) {
 	factory, err := New(data)
 	if err != nil {
 		return nil, err
@@ -3525,27 +3525,27 @@ func computeDDDigest(data []byte) (Sdbf, error) {
 // LastCount returns the element count of the final bloom filter. In
 // stream mode this is the tail filter's count; in DD mode it is
 // always 0.
-func LastCount(s Sdbf) uint32 {
+func LastCount(s Digest) uint32 {
 	return s.(*sdbf).lastCount
 }
 
 // ElemCount returns the element count of the bloom filter at the given
 // index. Callers must ensure 0 <= index < FilterCount(s).
-func ElemCount(s Sdbf, index uint32) uint32 {
+func ElemCount(s Digest, index uint32) uint32 {
 	return s.(*sdbf).elemCount(index)
 }
 
 // Hamming returns the Hamming weight (number of set bits) of the bloom
 // filter at the given index. Callers must ensure
 // 0 <= index < FilterCount(s).
-func Hamming(s Sdbf, index uint32) uint16 {
+func Hamming(s Digest, index uint32) uint16 {
 	return s.(*sdbf).hamming[index]
 }
 
 // TotalElements returns the sum of element counts across all bloom
 // filters in the digest. This is the numerator of FeatureDensity
 // (FeatureDensity returns TotalElements / InputSize).
-func TotalElements(s Sdbf) uint64 {
+func TotalElements(s Digest) uint64 {
 	sd := s.(*sdbf)
 	var total uint64
 	for i := uint32(0); i < sd.bfCount; i++ {
@@ -3556,7 +3556,7 @@ func TotalElements(s Sdbf) uint64 {
 
 // streamDigestPayload returns the 14 payload fields of a corpushash stream row
 // (all columns after filename and category).
-func streamDigestPayload(sd Sdbf) []string {
+func streamDigestPayload(sd Digest) []string {
 	hash := strings.TrimRight(sd.String(), "\r\n")
 	inputSize := sd.InputSize()
 	filterCount := sd.FilterCount()
@@ -3616,7 +3616,7 @@ func streamDigestPayload(sd Sdbf) []string {
 }
 
 // ddDigestPayload returns the 7 payload fields of a corpushash DD row.
-func ddDigestPayload(sd Sdbf) []string {
+func ddDigestPayload(sd Digest) []string {
 	hash := strings.TrimRight(sd.String(), "\r\n")
 	inputSize := sd.InputSize()
 	filterCount := sd.FilterCount()

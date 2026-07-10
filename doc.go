@@ -28,7 +28,7 @@
 //	}
 //	fmt.Println(digest.String())
 //
-//	score, ok := digest1.Compare(digest2)
+//	score, ok := digest1.Similarity(digest2)
 //
 // # Degenerate digests
 //
@@ -38,7 +38,7 @@
 //
 // # Concurrency
 //
-// Every method on Sdbf is safe for concurrent use. Each Compute call produces
+// Every method on Digest is safe for concurrent use. Each Compute call produces
 // an independent digest with no shared state. The recommended pattern for
 // high-throughput processing is one goroutine per input.
 package sdhash

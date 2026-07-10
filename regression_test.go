@@ -24,12 +24,12 @@ import (
 //    https://github.com/malwarology/sdhash/issues/3
 // └── 00050000  High block count DD mode
 //
-// Issue 4 — Unbounded memory allocation in ParseSdbfFromString
+// Issue 4 — Unbounded memory allocation in Parse
 //    https://github.com/malwarology/sdhash/issues/4
 // ├── 00060000  Parse oversized bfCount
 // └── 00070000  Parse zero bfSize
 //
-// Issue 10 — ParseSdbfFromString panics on truncated base64 payload
+// Issue 10 — Parse panics on truncated base64 payload
 //    https://github.com/malwarology/sdhash/issues/10
 // ├── 00080000  Parse truncated stream buffer
 // ├── 00090000  Parse stream lastCount exceeds maxElem
@@ -48,12 +48,12 @@ import (
 //    https://github.com/malwarology/sdhash/issues/15
 // └── 00140000  DD parse without trailing newline
 //
-// Issue 17 — Compare panics on nil or foreign Sdbf implementation
+// Issue 17 — Similarity panics on nil or foreign Digest implementation
 //    https://github.com/malwarology/sdhash/issues/17
-// ├── 00150000  Compare with nil Sdbf returns -1
-// └── 00160000  Compare with foreign Sdbf implementation returns -1
+// ├── 00150000  Similarity with nil Digest returns -1
+// └── 00160000  Similarity with foreign Digest implementation returns -1
 //
-// Issue 19 — Unconstrained maxElem enables uint32 overflow in Compare
+// Issue 19 — Unconstrained maxElem enables uint32 overflow in Similarity
 //    https://github.com/malwarology/sdhash/issues/19
 // ├── 00170000  Parse maxElem overflow (uint32 wraparound)
 // └── 00180000  Parse maxElem zero
@@ -66,7 +66,7 @@ import (
 //    https://github.com/malwarology/sdhash/issues/21
 // └── 00200000  Small block size uint64 underflow
 //
-// Issue 31 — ParseSdbfFromString ddBlockSize silently truncated from uint64 to uint32
+// Issue 31 — Parse ddBlockSize silently truncated from uint64 to uint32
 //    https://github.com/malwarology/sdhash/issues/31
 // └── 00210000  DD ddBlockSize uint64 to uint32 truncation
 //
@@ -109,16 +109,16 @@ func TestIssue1_StreamAndDDParsedScoreInRange(t *testing.T) {
 	ddBytes, err := os.ReadFile("testdata/issue1.dd")
 	mustNoError(t, err)
 
-	streamSD, err := ParseSdbfFromString(string(streamBytes))
-	mustNoError(t, err, "ParseSdbfFromString must succeed on issue1.stream")
+	streamSD, err := Parse(string(streamBytes))
+	mustNoError(t, err, "Parse must succeed on issue1.stream")
 
-	ddSD, err := ParseSdbfFromString(string(ddBytes))
-	mustNoError(t, err, "ParseSdbfFromString must succeed on issue1.dd")
+	ddSD, err := Parse(string(ddBytes))
+	mustNoError(t, err, "Parse must succeed on issue1.dd")
 
 	var score int
 	var ok bool
-	checkNotPanics(t, func() { score, ok = streamSD.Compare(ddSD) }, "cross-mode Compare must not panic")
-	checkTrue(t, ok, "cross-mode Compare must be meaningful")
+	checkNotPanics(t, func() { score, ok = streamSD.Similarity(ddSD) }, "cross-mode Similarity must not panic")
+	checkTrue(t, ok, "cross-mode Similarity must be meaningful")
 	checkAtLeast(t, score, 0, "cross-mode score must be >= 0")
 	checkAtMost(t, score, 100, "cross-mode score must be <= 100")
 }
@@ -133,11 +133,11 @@ func TestIssue1_RoundTrip_StreamReference(t *testing.T) {
 	mustNoError(t, err)
 	raw := strings.TrimRight(string(rawBytes), "\r\n") + "\n"
 
-	sd, err := ParseSdbfFromString(raw)
+	sd, err := Parse(raw)
 	mustNoError(t, err)
 
-	checkEqual(t, raw, sd.String(), "ParseSdbfFromString→String must be identity for issue1.stream")
-	score, ok := sd.Compare(sd)
+	checkEqual(t, raw, sd.String(), "Parse→String must be identity for issue1.stream")
+	score, ok := sd.Similarity(sd)
 	checkTrue(t, ok, "self-comparison of parsed issue1.stream digest must be comparable")
 	checkEqual(t, 100, score, "self-comparison of parsed issue1.stream digest must be 100")
 }
@@ -152,11 +152,11 @@ func TestIssue1_RoundTrip_DDReference(t *testing.T) {
 	mustNoError(t, err)
 	raw := strings.TrimRight(string(rawBytes), "\r\n") + "\n"
 
-	sd, err := ParseSdbfFromString(raw)
+	sd, err := Parse(raw)
 	mustNoError(t, err)
 
-	checkEqual(t, raw, sd.String(), "ParseSdbfFromString→String must be identity for issue1.dd")
-	score, ok := sd.Compare(sd)
+	checkEqual(t, raw, sd.String(), "Parse→String must be identity for issue1.dd")
+	score, ok := sd.Similarity(sd)
 	checkTrue(t, ok, "self-comparison of parsed issue1.dd digest must be comparable")
 	checkEqual(t, 100, score, "self-comparison of parsed issue1.dd digest must be 100")
 }
@@ -181,7 +181,7 @@ func TestIssue2_DDModeNoFalsePositive(t *testing.T) {
 	ddA := ddDigest(t, dataA, 65536)
 	ddB := ddDigest(t, dataB, 65536)
 
-	score, ok := ddA.Compare(ddB)
+	score, ok := ddA.Similarity(ddB)
 	checkTrue(t, ok, "issue2 DD comparison must be comparable")
 	checkEqual(t, 0, score,
 		"issue2 DD comparison must be 0")
@@ -213,13 +213,13 @@ func TestIssue3_HighBlockCountDDMode(t *testing.T) {
 	sd, err := factory.WithBlockSize(ddBlockSize).Compute()
 	mustNoError(t, err)
 
-	score, ok := sd.Compare(sd)
+	score, ok := sd.Similarity(sd)
 	checkTrue(t, ok, "self-comparison must be comparable")
 	checkEqual(t, 100, score, "self-comparison must return 100")
 }
 
 // =========================================================================
-// Issue 4 — Unbounded memory allocation in ParseSdbfFromString
+// Issue 4 — Unbounded memory allocation in Parse
 // https://github.com/malwarology/sdhash/issues/4
 // =========================================================================
 
@@ -229,7 +229,7 @@ func TestIssue3_HighBlockCountDDMode(t *testing.T) {
 
 // TestIssue4_ParseOversizedBfCount verifies that a digest string with a
 // bfCount large enough to exceed the 256 MiB allocation limit is rejected
-// by ParseSdbfFromString rather than causing an OOM panic.
+// by Parse rather than causing an OOM panic.
 func TestIssue4_ParseOversizedBfCount(t *testing.T) {
 	t.Parallel()
 
@@ -237,9 +237,9 @@ func TestIssue4_ParseOversizedBfCount(t *testing.T) {
 	// ~238 GiB, far exceeding the 256 MiB cap.
 	digest := "sdbf:03:1:-:1048576:sha1:256:5:7ff:160:999999999:100:"
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error for a bfCount that exceeds the allocation limit (regression: issue #4)")
+		"Parse must return an error for a bfCount that exceeds the allocation limit (regression: issue #4)")
 }
 
 // ---------------------------------------------------------------------------
@@ -247,7 +247,7 @@ func TestIssue4_ParseOversizedBfCount(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestIssue4_ParseZeroBfSize verifies that a digest string with bfSize set to
-// zero is rejected by ParseSdbfFromString rather than causing a divide-by-zero
+// zero is rejected by Parse rather than causing a divide-by-zero
 // panic inside the allocation sanity check.
 func TestIssue4_ParseZeroBfSize(t *testing.T) {
 	t.Parallel()
@@ -256,13 +256,13 @@ func TestIssue4_ParseZeroBfSize(t *testing.T) {
 	// a divide-by-zero when computing maxBfAlloc/bfSize.
 	digest := "sdbf:03:1:-:1048576:sha1:0:5:7ff:160:100:100:"
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error for a bfSize of zero (regression: issue #4)")
+		"Parse must return an error for a bfSize of zero (regression: issue #4)")
 }
 
 // =========================================================================
-// Issue 10 — ParseSdbfFromString panics on truncated base64 payload
+// Issue 10 — Parse panics on truncated base64 payload
 // https://github.com/malwarology/sdhash/issues/10
 // =========================================================================
 
@@ -272,7 +272,7 @@ func TestIssue4_ParseZeroBfSize(t *testing.T) {
 
 // TestIssue10_ParseTruncatedStreamBuffer verifies that a stream digest whose
 // base64 payload decodes to fewer bytes than bfCount × bfSize is rejected by
-// ParseSdbfFromString rather than causing a slice-bounds panic in computeHamming.
+// Parse rather than causing a slice-bounds panic in computeHamming.
 func TestIssue10_ParseTruncatedStreamBuffer(t *testing.T) {
 	t.Parallel()
 
@@ -280,9 +280,9 @@ func TestIssue10_ParseTruncatedStreamBuffer(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 128))
 	digest := fmt.Sprintf("sdbf:03:1:-:1048576:sha1:256:5:7ff:160:1:100:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error when the base64 payload decodes to fewer bytes than bfCount × bfSize (regression: issue #10)")
+		"Parse must return an error when the base64 payload decodes to fewer bytes than bfCount × bfSize (regression: issue #10)")
 }
 
 // ---------------------------------------------------------------------------
@@ -290,7 +290,7 @@ func TestIssue10_ParseTruncatedStreamBuffer(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestIssue10_ParseStreamLastCountExceedsMaxElem verifies that a stream digest
-// where lastCount is greater than maxElem is rejected by ParseSdbfFromString.
+// where lastCount is greater than maxElem is rejected by Parse.
 func TestIssue10_ParseStreamLastCountExceedsMaxElem(t *testing.T) {
 	t.Parallel()
 
@@ -299,9 +299,9 @@ func TestIssue10_ParseStreamLastCountExceedsMaxElem(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 256))
 	digest := fmt.Sprintf("sdbf:03:1:-:1048576:sha1:256:5:7ff:160:1:999:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error when lastCount exceeds maxElem (regression: issue #10)")
+		"Parse must return an error when lastCount exceeds maxElem (regression: issue #10)")
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +309,7 @@ func TestIssue10_ParseStreamLastCountExceedsMaxElem(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestIssue10_ParseDDBlockTooShort verifies that a DD digest where a block's
-// base64 decodes to fewer bytes than bfSize is rejected by ParseSdbfFromString
+// base64 decodes to fewer bytes than bfSize is rejected by Parse
 // rather than leaving the destination slice partially filled.
 func TestIssue10_ParseDDBlockTooShort(t *testing.T) {
 	t.Parallel()
@@ -319,9 +319,9 @@ func TestIssue10_ParseDDBlockTooShort(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 128))
 	digest := fmt.Sprintf("sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:160:1:65536:64:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error when a DD block's base64 decodes to fewer bytes than bfSize (regression: issue #10)")
+		"Parse must return an error when a DD block's base64 decodes to fewer bytes than bfSize (regression: issue #10)")
 }
 
 // ---------------------------------------------------------------------------
@@ -329,7 +329,7 @@ func TestIssue10_ParseDDBlockTooShort(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestIssue10_ParseDDElemCountExceedsMaxElem verifies that a DD digest where
-// a block's element count exceeds maxElem is rejected by ParseSdbfFromString.
+// a block's element count exceeds maxElem is rejected by Parse.
 func TestIssue10_ParseDDElemCountExceedsMaxElem(t *testing.T) {
 	t.Parallel()
 
@@ -338,9 +338,9 @@ func TestIssue10_ParseDDElemCountExceedsMaxElem(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 256))
 	digest := fmt.Sprintf("sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:65536:ff:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error when a DD block element count exceeds maxElem (regression: issue #10)")
+		"Parse must return an error when a DD block element count exceeds maxElem (regression: issue #10)")
 }
 
 // =========================================================================
@@ -354,7 +354,7 @@ func TestIssue10_ParseDDElemCountExceedsMaxElem(t *testing.T) {
 
 // TestIssue11_ParseUnsupportedBfSize verifies that a stream digest string with
 // bfSize set to 512 instead of the only supported value (256) is rejected by
-// ParseSdbfFromString. The rest of the digest is structurally valid: bfCount=1,
+// Parse. The rest of the digest is structurally valid: bfCount=1,
 // maxElem=160, lastCount=100, and a 512-byte base64 payload that satisfies the
 // bfCount × bfSize length check — ensuring the rejection is caused solely by
 // the unsupported bfSize value and not by any other validation.
@@ -366,9 +366,9 @@ func TestIssue11_ParseUnsupportedBfSize(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 512))
 	digest := fmt.Sprintf("sdbf:03:1:-:1048576:sha1:512:5:7ff:160:1:100:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error for a bfSize other than 256 (regression: issue #11)")
+		"Parse must return an error for a bfSize other than 256 (regression: issue #11)")
 }
 
 // =========================================================================
@@ -421,7 +421,7 @@ func TestIssue14_BufferMutationAfterFactory(t *testing.T) {
 // 00140000  DD parse without trailing newline
 // ---------------------------------------------------------------------------
 
-// TestIssue15_DDParseWithoutTrailingNewline verifies that ParseSdbfFromString
+// TestIssue15_DDParseWithoutTrailingNewline verifies that Parse
 // correctly decodes a DD digest string that has no trailing newline. Without
 // the EOF-tolerant fix, the last byte of the final block's base64 payload is
 // stripped along with the missing delimiter, causing a base64 decode error or
@@ -436,28 +436,28 @@ func TestIssue15_DDParseWithoutTrailingNewline(t *testing.T) {
 	checkTrue(t, !strings.HasSuffix(stripped, "\n"),
 		"stripped digest must not end with a newline")
 
-	parsed, err := ParseSdbfFromString(stripped)
-	mustNoError(t, err, "ParseSdbfFromString must succeed on a DD digest without a trailing newline (regression: issue #15)")
+	parsed, err := Parse(stripped)
+	mustNoError(t, err, "Parse must succeed on a DD digest without a trailing newline (regression: issue #15)")
 
 	checkEqual(t, sd.String(), parsed.String(),
 		"parsed digest String() must equal the original (regression: issue #15)")
-	score, ok := parsed.Compare(parsed)
+	score, ok := parsed.Similarity(parsed)
 	checkTrue(t, ok, "self-comparison of parsed digest must be comparable (regression: issue #15)")
 	checkEqual(t, 100, score, "self-comparison of parsed digest must return 100 (regression: issue #15)")
 }
 
 // =========================================================================
-// Issue 17 — Compare panics on nil or foreign Sdbf implementation
+// Issue 17 — Similarity panics on nil or foreign Digest implementation
 // https://github.com/malwarology/sdhash/issues/17
 // =========================================================================
 
 // ---------------------------------------------------------------------------
-// 00150000  Compare with nil Sdbf returns -1
+// 00150000  Similarity with nil Digest returns -1
 // ---------------------------------------------------------------------------
 
-// TestIssue17_CompareNilSdbf verifies that calling Compare with a nil Sdbf
+// TestIssue17_CompareNilSdbf verifies that calling Similarity with a nil Digest
 // argument returns -1 instead of panicking. Without a nil guard inside
-// Compare, passing nil causes a nil-pointer dereference when the
+// Similarity, passing nil causes a nil-pointer dereference when the
 // implementation attempts to access the argument's fields.
 func TestIssue17_CompareNilSdbf(t *testing.T) {
 	t.Parallel()
@@ -466,33 +466,33 @@ func TestIssue17_CompareNilSdbf(t *testing.T) {
 	sd := streamDigest(t, buf)
 
 	var ok bool
-	checkNotPanics(t, func() { _, ok = sd.Compare(nil) },
-		"Compare(nil) must not panic (regression: issue #17)")
+	checkNotPanics(t, func() { _, ok = sd.Similarity(nil) },
+		"Similarity(nil) must not panic (regression: issue #17)")
 	checkTrue(t, !ok,
-		"Compare(nil) must not be comparable (regression: issue #17)")
+		"Similarity(nil) must not be comparable (regression: issue #17)")
 }
 
 // ---------------------------------------------------------------------------
-// 00160000  Compare with foreign Sdbf implementation returns -1
+// 00160000  Similarity with foreign Digest implementation returns -1
 // ---------------------------------------------------------------------------
 
-// foreignSdbfImpl is a minimal Sdbf implementation used only by
-// TestIssue17_CompareForeignImpl. It satisfies the Sdbf interface but is not
-// the internal *sdbf type, so a type-assertion guard inside Compare must
+// foreignDigestImpl is a minimal Digest implementation used only by
+// TestIssue17_CompareForeignImpl. It satisfies the Digest interface but is not
+// the internal *sdbf type, so a type-assertion guard inside Similarity must
 // handle it gracefully rather than panicking.
-type foreignSdbfImpl struct{}
+type foreignDigestImpl struct{}
 
-func (f *foreignSdbfImpl) FilterSize() uint64       { return 0 }
-func (f *foreignSdbfImpl) InputSize() uint64        { return 0 }
-func (f *foreignSdbfImpl) FilterCount() uint32      { return 0 }
-func (f *foreignSdbfImpl) Compare(Sdbf) (int, bool) { return 0, false }
-func (f *foreignSdbfImpl) String() string           { return "" }
-func (f *foreignSdbfImpl) FeatureDensity() float64  { return 0 }
+func (f *foreignDigestImpl) FilterSize() uint64       { return 0 }
+func (f *foreignDigestImpl) InputSize() uint64        { return 0 }
+func (f *foreignDigestImpl) FilterCount() uint32      { return 0 }
+func (f *foreignDigestImpl) Similarity(Digest) (int, bool) { return 0, false }
+func (f *foreignDigestImpl) String() string           { return "" }
+func (f *foreignDigestImpl) FeatureDensity() float64  { return 0 }
 
-// TestIssue17_CompareForeignImpl verifies that calling Compare with a foreign
-// Sdbf implementation — one that satisfies the interface but is not the
+// TestIssue17_CompareForeignImpl verifies that calling Similarity with a foreign
+// Digest implementation — one that satisfies the interface but is not the
 // internal *sdbf type — returns -1 instead of panicking. Without a type-assertion
-// guard inside Compare, a type assertion to *sdbf on the foreign
+// guard inside Similarity, a type assertion to *sdbf on the foreign
 // value panics at runtime.
 func TestIssue17_CompareForeignImpl(t *testing.T) {
 	t.Parallel()
@@ -500,17 +500,17 @@ func TestIssue17_CompareForeignImpl(t *testing.T) {
 	buf := randomBuf(1<<20, 81, 81)
 	sd := streamDigest(t, buf)
 
-	foreign := &foreignSdbfImpl{}
+	foreign := &foreignDigestImpl{}
 
 	var ok bool
-	checkNotPanics(t, func() { _, ok = sd.Compare(foreign) },
-		"Compare with a foreign Sdbf implementation must not panic (regression: issue #17)")
+	checkNotPanics(t, func() { _, ok = sd.Similarity(foreign) },
+		"Similarity with a foreign Digest implementation must not panic (regression: issue #17)")
 	checkTrue(t, !ok,
-		"Compare with a foreign Sdbf implementation must not be comparable (regression: issue #17)")
+		"Similarity with a foreign Digest implementation must not be comparable (regression: issue #17)")
 }
 
 // =========================================================================
-// Issue 19 — Unconstrained maxElem enables uint32 overflow in Compare
+// Issue 19 — Unconstrained maxElem enables uint32 overflow in Similarity
 // https://github.com/malwarology/sdhash/issues/19
 // =========================================================================
 
@@ -519,7 +519,7 @@ func TestIssue17_CompareForeignImpl(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestIssue19_ParseMaxElemOverflow verifies that a stream digest string with
-// maxElem set to 2147483649 (0x80000001) is rejected by ParseSdbfFromString.
+// maxElem set to 2147483649 (0x80000001) is rejected by Parse.
 // Without an upper-bound check, the value is silently truncated to uint32,
 // causing arithmetic overflow in the scoring path that produces an
 // out-of-bounds index into cutoffs256 (149 entries) and panics.
@@ -532,9 +532,9 @@ func TestIssue19_ParseMaxElemOverflow(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 2*256))
 	digest := fmt.Sprintf("sdbf:03:1:-:1048576:sha1:256:5:7ff:2147483649:2:0:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error for a maxElem that overflows uint32 arithmetic (regression: issue #19)")
+		"Parse must return an error for a maxElem that overflows uint32 arithmetic (regression: issue #19)")
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +542,7 @@ func TestIssue19_ParseMaxElemOverflow(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestIssue19_ParseMaxElemZero verifies that a stream digest string with
-// maxElem set to 0 is rejected by ParseSdbfFromString. A zero maxElem is
+// maxElem set to 0 is rejected by Parse. A zero maxElem is
 // semantically meaningless (no elements can be inserted) and would produce
 // a divide-by-zero or scoring anomaly if passed through unchecked.
 func TestIssue19_ParseMaxElemZero(t *testing.T) {
@@ -554,9 +554,9 @@ func TestIssue19_ParseMaxElemZero(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 256))
 	digest := fmt.Sprintf("sdbf:03:1:-:1048576:sha1:256:5:7ff:0:1:0:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error for a maxElem of zero (regression: issue #19)")
+		"Parse must return an error for a maxElem of zero (regression: issue #19)")
 }
 
 // =========================================================================
@@ -634,9 +634,9 @@ func TestIssue21_SmallBlockSizeUnderflow(t *testing.T) {
 
 // TestIssue31_DdBlockSizeTruncation verifies that a DD digest string with
 // ddBlockSize set to 4294967552 (0x100000100, which truncates to 256 as uint32)
-// is rejected by ParseSdbfFromString. Without a range check, the value is
+// is rejected by Parse. Without a range check, the value is
 // silently narrowed when stored in a uint32 field, causing the parsed digest
-// to carry an incorrect block size that later produces corrupt Compare results
+// to carry an incorrect block size that later produces corrupt Similarity results
 // or allows crafted input to bypass block-size validation.
 func TestIssue31_DdBlockSizeTruncation(t *testing.T) {
 	t.Parallel()
@@ -647,9 +647,9 @@ func TestIssue31_DdBlockSizeTruncation(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString(make([]byte, 256))
 	digest := fmt.Sprintf("sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:4294967552:c0:%s\n", payload)
 
-	_, err := ParseSdbfFromString(digest)
+	_, err := Parse(digest)
 	checkError(t, err,
-		"ParseSdbfFromString must return an error for a ddBlockSize that overflows uint32 (regression: issue #31)")
+		"Parse must return an error for a ddBlockSize that overflows uint32 (regression: issue #31)")
 }
 
 // =========================================================================
@@ -665,7 +665,7 @@ func TestIssue31_DdBlockSizeTruncation(t *testing.T) {
 // digests where some filters have no scoreable target returns a clean
 // (score, true) result. Pre-fix, the -1 sentinels returned by sdbfMaxScore
 // for no-scoreable-target filters were summed directly into scoreSum,
-// pushing it negative and causing Compare to incorrectly report the pair as
+// pushing it negative and causing Similarity to incorrectly report the pair as
 // incomparable (0, false). Post-fix, the -1 returns are excluded from both
 // the sum and the denominator, the remaining valid filter comparisons are
 // averaged correctly, and this pair's low real similarity is reported as
@@ -682,12 +682,12 @@ func TestIssue43_StreamDegeneratePairScore(t *testing.T) {
 
 	var score int
 	var ok bool
-	checkNotPanics(t, func() { score, ok = sdA.Compare(sdB) },
-		"Compare must not panic on this pair (regression: issue #43)")
+	checkNotPanics(t, func() { score, ok = sdA.Similarity(sdB) },
+		"Similarity must not panic on this pair (regression: issue #43)")
 	checkTrue(t, ok,
-		"Compare must return ok=true; pre-fix bug flipped it to false (regression: issue #43)")
+		"Similarity must return ok=true; pre-fix bug flipped it to false (regression: issue #43)")
 	checkEqual(t, 0, score,
-		"Compare must return score=0 for this pair (regression: issue #43)")
+		"Similarity must return score=0 for this pair (regression: issue #43)")
 }
 
 // ---------------------------------------------------------------------------
@@ -714,12 +714,12 @@ func TestIssue43_DDDegeneratePairScore(t *testing.T) {
 
 	var score int
 	var ok bool
-	checkNotPanics(t, func() { score, ok = sdA.Compare(sdB) },
-		"Compare must not panic on this pair (regression: issue #43)")
+	checkNotPanics(t, func() { score, ok = sdA.Similarity(sdB) },
+		"Similarity must not panic on this pair (regression: issue #43)")
 	checkTrue(t, ok,
-		"Compare must return ok=true; pre-fix bug flipped it to false (regression: issue #43)")
+		"Similarity must return ok=true; pre-fix bug flipped it to false (regression: issue #43)")
 	checkEqual(t, 0, score,
-		"Compare must return score=0 for this pair (regression: issue #43)")
+		"Similarity must return score=0 for this pair (regression: issue #43)")
 }
 
 // =========================================================================

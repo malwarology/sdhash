@@ -12,29 +12,29 @@ import (
 	"strings"
 )
 
-// Sdbf represents the similarity digest of a file or byte buffer. Two Sdbf values
+// Digest represents the similarity digest of a file or byte buffer. Two Digest values
 // can be compared to produce a score indicating how similar their source data is.
 //
-// Sdbf values are immutable after construction. Every method is safe for
+// Digest values are immutable after construction. Every method is safe for
 // concurrent use by multiple goroutines because no field is ever written
 // after the factory returns.
-type Sdbf interface {
+type Digest interface {
 
-	// FilterSize returns the total byte size of the bloom filter data within this Sdbf.
+	// FilterSize returns the total byte size of the bloom filter data within this Digest.
 	FilterSize() uint64
 
-	// InputSize returns the size of the original data this Sdbf was generated from.
+	// InputSize returns the size of the original data this Digest was generated from.
 	InputSize() uint64
 
-	// FilterCount returns the number of bloom filters in this Sdbf.
+	// FilterCount returns the number of bloom filters in this Digest.
 	FilterCount() uint32
 
-	// Compare returns a similarity score in [0, 100] between this Sdbf and other,
+	// Similarity returns a similarity score in [0, 100] between this Digest and other,
 	// and a boolean indicating whether the comparison was meaningful. Returns
 	// (0, false) if other is nil, was not produced by this package, or if both
 	// digests are degenerate and all filters fall below the minimum element
 	// threshold.
-	Compare(other Sdbf) (int, bool)
+	Similarity(other Digest) (int, bool)
 
 	// String returns the digest encoded as a string in the sdbf wire format.
 	String() string
@@ -99,7 +99,7 @@ func (sd *sdbf) FeatureDensity() float64 {
 	return float64(totalElements) / float64(sd.origFileSize)
 }
 
-func (sd *sdbf) Compare(other Sdbf) (int, bool) {
+func (sd *sdbf) Similarity(other Digest) (int, bool) {
 	if other == nil {
 		return 0, false
 	}
@@ -196,11 +196,11 @@ func skipField(r *bufio.Reader) error {
 	return err
 }
 
-// ParseSdbfFromReader decodes a single Sdbf from a reader in sdbf wire format.
+// ParseReader decodes a single Digest from a reader in sdbf wire format.
 // The reader is consumed through the end of the digest, including the trailing
 // newline if present. For files containing multiple digests, call this function
 // repeatedly until io.EOF is encountered.
-func ParseSdbfFromReader(reader io.Reader) (Sdbf, error) {
+func ParseReader(reader io.Reader) (Digest, error) {
 	r, ok := reader.(*bufio.Reader)
 	if !ok {
 		r = bufio.NewReader(reader)
@@ -353,7 +353,7 @@ func ParseSdbfFromReader(reader io.Reader) (Sdbf, error) {
 	return sd, nil
 }
 
-// ParseSdbfFromString decodes a Sdbf from a digest string in sdbf wire format.
-func ParseSdbfFromString(digest string) (Sdbf, error) {
-	return ParseSdbfFromReader(strings.NewReader(digest))
+// Parse decodes a Digest from a digest string in sdbf wire format.
+func Parse(digest string) (Digest, error) {
+	return ParseReader(strings.NewReader(digest))
 }

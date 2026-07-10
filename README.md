@@ -52,7 +52,7 @@ if err != nil {
 ### Comparing two digests
 
 ```go
-score, ok := digest1.Compare(digest2)
+score, ok := digest1.Similarity(digest2)
 if !ok {
     fmt.Println("comparison could not be performed")
     return
@@ -63,7 +63,7 @@ fmt.Printf("similarity: %d/100\n", score)
 ### Parsing a digest string
 
 ```go
-digest, err := sdhash.ParseSdbfFromString(line)
+digest, err := sdhash.Parse(line)
 if err != nil {
     log.Fatal(err)
 }
@@ -80,7 +80,7 @@ defer f.Close()
 
 r := bufio.NewReader(f)
 for {
-    digest, err := sdhash.ParseSdbfFromReader(r)
+    digest, err := sdhash.ParseReader(r)
     if err != nil {
         break
     }
@@ -90,11 +90,11 @@ for {
 
 ### High-throughput processing
 
-The recommended pattern for processing many inputs concurrently is one goroutine per input. Each `Compute` call produces a fully independent `Sdbf` with no shared state.
+The recommended pattern for processing many inputs concurrently is one goroutine per input. Each `Compute` call produces a fully independent `Digest` with no shared state.
 
 ```go
 var wg sync.WaitGroup
-results := make([]sdhash.Sdbf, len(inputs))
+results := make([]sdhash.Digest, len(inputs))
 
 for i, data := range inputs {
     wg.Add(1)
@@ -115,24 +115,24 @@ wg.Wait()
 ```go
 // New returns a factory that will produce a digest from the
 // given byte slice. The slice must be at least MinFileSize (512) bytes.
-func New([]byte) (SdbfFactory, error)
+func New([]byte) (Factory, error)
 
-// SdbfFactory builds a digest. Methods return a new factory rather than
+// Factory builds a digest. Methods return a new factory rather than
 // modifying the receiver, making the type safe to share across goroutines.
-type SdbfFactory interface {
-    WithBlockSize(uint32) SdbfFactory  // 0 = stream mode (default)
-    Compute() (Sdbf, error)
+type Factory interface {
+    WithBlockSize(uint32) Factory  // 0 = stream mode (default)
+    Compute() (Digest, error)
 }
 
-// ParseSdbfFromString decodes a digest from a wire-format string.
-func ParseSdbfFromString(string) (Sdbf, error)
+// Parse decodes a digest from a wire-format string.
+func Parse(string) (Digest, error)
 
-// ParseSdbfFromReader decodes a single digest from a reader.
-func ParseSdbfFromReader(io.Reader) (Sdbf, error)
+// ParseReader decodes a single digest from a reader.
+func ParseReader(io.Reader) (Digest, error)
 
-// Sdbf is a computed similarity digest.
-type Sdbf interface {
-    Compare(Sdbf) (int, bool)            // similarity score in [0, 100]; false if not comparable
+// Digest is a computed similarity digest.
+type Digest interface {
+    Similarity(Digest) (int, bool)            // similarity score in [0, 100]; false if not comparable
     String() string                      // wire-format encoding
     FilterSize() uint64                  // total bloom filter data size in bytes
     InputSize() uint64                   // size of the original input
@@ -210,7 +210,7 @@ ordered pair of the 1,196-file mixedbag corpus, in both stream and DD
 modes — with zero unexplained divergences.
 
 The modern path improves on the C++ reference in three ways — two in
-scoring (via `Compare`) and one in construction (via `New`):
+scoring (via `Similarity`) and one in construction (via `New`):
 
 1. **Full popcount.** The C++ implementation uses a staged early-exit
    heuristic (`bf_bitcount_cut_256` with `slack=48`) that can reject
@@ -223,7 +223,7 @@ scoring (via `Compare`) and one in construction (via `New`):
 2. **Clean accumulation.** The C++ implementation initializes `score_sum`
    to -1 and uses conditional assignment on the first iteration, which
    causes a non-negative result to reset any previously accumulated
-   negative. `Compare` uses straightforward addition, which is simpler
+   negative. `Similarity` uses straightforward addition, which is simpler
    and does not mask degenerate filter results.
 
 3. **Single-count feature selection.** The C++ sliding-window selector
@@ -242,11 +242,11 @@ scoring (via `Compare`) and one in construction (via `New`):
 
 ## Concurrency
 
-Every method on `Sdbf` is safe to call from multiple goroutines simultaneously. `Compare`, `String`, `FilterSize`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
+Every method on `Digest` is safe to call from multiple goroutines simultaneously. `Similarity`, `String`, `FilterSize`, `InputSize`, `FilterCount`, and `FeatureDensity` are read-only and may be called concurrently without restriction.
 
-Each `New` call followed by `Compute` produces an independent `Sdbf` instance with no shared state. Computing many digests concurrently across different inputs is safe and is the primary pattern the library is designed for.
+Each `New` call followed by `Compute` produces an independent `Digest` instance with no shared state. Computing many digests concurrently across different inputs is safe and is the primary pattern the library is designed for.
 
-**`SdbfFactory` is immutable.** `WithBlockSize` returns a new factory rather than modifying the receiver. Sharing a factory across goroutines is safe, though pointless since each `Compute` call produces an independent result.
+**`Factory` is immutable.** `WithBlockSize` returns a new factory rather than modifying the receiver. Sharing a factory across goroutines is safe, though pointless since each `Compute` call produces an independent result.
 
 ## Testing
 
@@ -282,6 +282,6 @@ go test -tags corpuscompare -run TestCorpusCompare -timeout=0 -count=1 ./...
 `corpushash` regenerates the normal corpus (66,020 files across 23
 categories) and folds per-digest statistics into one anchor. `corpuscompare`
 regenerates the mixedbag corpus (1,196 files), scores every ordered pair
-including self-pairs with `Compare`, and folds the per-pair
+including self-pairs with `Similarity`, and folds the per-pair
 fields into one anchor per mode. Both run in CI on push to main; they are
 excluded from the default suite.

@@ -52,8 +52,8 @@ var (
 type compareDigest struct {
 	category   string
 	filename   string
-	stream     Sdbf
-	dd         Sdbf
+	stream     Digest
+	dd         Digest
 	streamDens float64
 	ddDens     float64
 	streamOK   bool
@@ -134,7 +134,7 @@ func computeCompareAnchors(t *testing.T, work []corpusWork) *corpusCompareAnchor
 
 	// Phase 3 — Parallel: score every ordered pair in both modes. Each outer
 	// index i owns a contiguous, disjoint output range [i*n, i*n+n), so the
-	// record slices are written without locking. Scoring uses Compare, the
+	// record slices are written without locking. Scoring uses Similarity, the
 	// modern public API.
 	n := len(digests)
 	streamRecs := make([]anchorRecord, n*n)
@@ -178,13 +178,13 @@ func computeCompareAnchors(t *testing.T, work []corpusWork) *corpusCompareAnchor
 					b := digests[j]
 					key := compareKey(a.filename, b.filename)
 
-					sScore, sOk := a.stream.Compare(b.stream)
+					sScore, sOk := a.stream.Similarity(b.stream)
 					streamRecs[base+j] = anchorRecord{
 						key: key,
 						h:   hashRecord(key, comparePayload(a.streamDens, b.streamDens, sScore, sOk)),
 					}
 
-					dScore, dOk := a.dd.Compare(b.dd)
+					dScore, dOk := a.dd.Similarity(b.dd)
 					ddRecs[base+j] = anchorRecord{
 						key: key,
 						h:   hashRecord(key, comparePayload(a.ddDens, b.ddDens, dScore, dOk)),

@@ -13,7 +13,7 @@ import "testing"
 //	benchstat before.txt after.txt
 //
 // The stages are Compute (hashing), String (serialization), Parse
-// (deserialization), and Compare (scoring).
+// (deserialization), and Similarity (scoring).
 
 const (
 	benchSmall = 4 * 1024
@@ -23,7 +23,7 @@ const (
 
 // mustDigest computes a digest for benchmark setup, failing the benchmark on
 // error. blockSize == 0 selects stream mode; a nonzero value selects DD mode.
-func mustDigest(b *testing.B, data []byte, blockSize uint32) Sdbf {
+func mustDigest(b *testing.B, data []byte, blockSize uint32) Digest {
 	b.Helper()
 	factory, err := New(data)
 	if err != nil {
@@ -87,7 +87,7 @@ func BenchmarkParse(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := ParseSdbfFromString(s); err != nil {
+		if _, err := Parse(s); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -105,14 +105,14 @@ func BenchmarkCompare(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			sa.Compare(sb)
+			sa.Similarity(sb)
 		}
 	})
 	b.Run("dd", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			da.Compare(db)
+			da.Similarity(db)
 		}
 	})
 }
