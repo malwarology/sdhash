@@ -165,7 +165,7 @@ func computeCompareAnchors(t *testing.T, work []corpusWork) *corpusCompareAnchor
 	{
 		sem := make(chan struct{}, runtime.NumCPU())
 		var wg sync.WaitGroup
-		for i := 0; i < n; i++ {
+		for i := range n {
 			wg.Add(1)
 			sem <- struct{}{}
 			go func(i int) {
@@ -174,7 +174,7 @@ func computeCompareAnchors(t *testing.T, work []corpusWork) *corpusCompareAnchor
 
 				a := digests[i]
 				base := i * n
-				for j := 0; j < n; j++ {
+				for j := range n {
 					b := digests[j]
 					key := compareKey(a.filename, b.filename)
 
@@ -202,7 +202,7 @@ func computeCompareAnchors(t *testing.T, work []corpusWork) *corpusCompareAnchor
 	// bucket name need not be stored per record.
 	streamBuckets := make(map[string][]anchorRecord)
 	ddBuckets := make(map[string][]anchorRecord)
-	for idx := 0; idx < n*n; idx++ {
+	for idx := range n * n {
 		i := idx / n
 		j := idx % n
 		bucket := digests[i].category + "/" + digests[j].category

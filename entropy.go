@@ -26,11 +26,11 @@ func init() {
 // entropy64Compute performs a full entropy computation for a 64-byte buffer.
 func entropy64Compute(buffer []byte, ascii []byte) uint64 {
 	clear(ascii)
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		ascii[buffer[i]]++
 	}
 	var entropy uint64
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		if ascii[i] > 0 {
 			entropy += entropy64Int[ascii[i]]
 		}

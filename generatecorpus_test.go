@@ -35,7 +35,7 @@ func generateSizes(rng *rand.Rand, n int, sizeMin int, sizeMax int) []int {
 	// The digest selection algorithm picks the smallest blockSize where
 	// blockSize * 64 >= fileSize, so boundaries are at 3<<i * 64.
 	var boundaries []int
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		b := (3 << i) * 64
 		if b >= sizeMin && b <= sizeMax {
 			boundaries = append(boundaries, b)
@@ -46,7 +46,7 @@ func generateSizes(rng *rand.Rand, n int, sizeMin int, sizeMax int) []int {
 
 	// 70% log-uniform across the full range
 	bulk := n * 70 / 100
-	for i := 0; i < bulk; i++ {
+	for range bulk {
 		logSize := logMin + rng.Float64()*(logMax-logMin)
 		sizes = append(sizes, int(math.Round(math.Exp(logSize))))
 	}
@@ -108,7 +108,7 @@ func genSparse(rng *rand.Rand, size int) []byte {
 	density := 0.01 + rng.Float64()*0.09
 	nonZeroCount := int(float64(size) * density)
 
-	for i := 0; i < nonZeroCount; i++ {
+	for range nonZeroCount {
 		pos := rng.IntN(size)
 		buf[pos] = byte(1 + rng.IntN(255))
 	}
@@ -129,7 +129,7 @@ func genRepetitive(rng *rand.Rand, size int) []byte {
 	}
 
 	// Fill buffer with the pattern
-	for i := 0; i < size; i++ {
+	for i := range size {
 		buf[i] = pattern[i%patLen]
 	}
 
@@ -266,7 +266,7 @@ func genSubfloorEntropy(rng *rand.Rand, size int) []byte {
 	// range, filling the gap below the low_entropy floor.
 	freq := 0.000001 + rng.Float64()*0.000499
 	minorityCount := int(float64(size) * freq)
-	for i := 0; i < minorityCount; i++ {
+	for range minorityCount {
 		pos := rng.IntN(size)
 		buf[pos] = minority
 	}
@@ -359,7 +359,7 @@ func genDocumentLike(rng *rand.Rand, size int) []byte {
 				}
 				// Make first few bytes look like a name (ASCII range)
 				nameLen := min(16, len(entry))
-				for k := 0; k < nameLen; k++ {
+				for k := range nameLen {
 					entry[k] = byte('A' + rng.IntN(26))
 				}
 				copy(buf[pos:end], entry)
@@ -515,7 +515,7 @@ func directorySector(rng *rand.Rand, sector []byte) {
 		"Macros", "VBAProject", "NewMacros", "Sheet1", "Sheet2",
 	}
 
-	for entry := 0; entry < 4; entry++ {
+	for entry := range 4 {
 		base := entry * 128
 		if base >= len(sector) {
 			break
@@ -681,7 +681,7 @@ func sparseMixedSector(rng *rand.Rand, sector []byte) {
 
 	// Scatter some data islands
 	numIslands := 2 + rng.IntN(6)
-	for i := 0; i < numIslands; i++ {
+	for range numIslands {
 		islandStart := rng.IntN(len(sector))
 		islandLen := 4 + rng.IntN(48)
 
@@ -720,7 +720,7 @@ func paddingSector(rng *rand.Rand, sector []byte) {
 
 	// Sprinkle a few noise bytes
 	noiseCount := rng.IntN(20)
-	for i := 0; i < noiseCount; i++ {
+	for range noiseCount {
 		sector[rng.IntN(len(sector))] = byte(rng.IntN(256))
 	}
 }
@@ -1164,7 +1164,7 @@ func fillRelocSection(rng *rand.Rand, body []byte) {
 		}
 		binary.LittleEndian.PutUint32(body[i:], pageRVA)
 		binary.LittleEndian.PutUint32(body[i+4:], uint32(blockSize))
-		for j := 0; j < numEntries; j++ {
+		for j := range numEntries {
 			// Type HIGHLOW (3) in high nibble, offset in low 12 bits
 			entry := uint16(0x3000) | uint16(rng.IntN(0x1000))
 			binary.LittleEndian.PutUint16(body[i+8+j*2:], entry)
@@ -1363,7 +1363,7 @@ func genELF(rng *rand.Rand, size int) []byte {
 	phOff := elfHeaderSize
 	segSize := uint64(bodySpace / numPH)
 	phTypes := []uint32{1, 2, 4, 6, 7} // PT_LOAD, PT_DYNAMIC, PT_NOTE, PT_PHDR, PT_TLS
-	for i := 0; i < numPH; i++ {
+	for i := range numPH {
 		h := phOff + i*phEntSize
 		pt := phTypes[rng.IntN(len(phTypes))]
 		fileOff := uint64(headerRegion) + uint64(i)*segSize
@@ -1554,7 +1554,7 @@ func fillELFNoteSection(rng *rand.Rand, body []byte, isLE bool) {
 		put32(body[i+4:], uint32(descSz))
 		put32(body[i+8:], rng.Uint32()&0xF) // note type
 		copy(body[i+12:], name)
-		for j := 0; j < descSz; j++ {
+		for j := range descSz {
 			body[i+12+nameSz+j] = byte(rng.Uint32())
 		}
 		i += entrySize
@@ -1974,7 +1974,7 @@ func genMachO(rng *rand.Rand, size int) []byte {
 	// lcUUID
 	binary.LittleEndian.PutUint32(buf[lc:], lcUUID)
 	binary.LittleEndian.PutUint32(buf[lc+4:], uint32(lcUUIDSize))
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		buf[lc+8+i] = byte(rng.Uint32())
 	}
 	lc += lcUUIDSize
@@ -1995,7 +1995,7 @@ func genMachO(rng *rand.Rand, size int) []byte {
 		"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation\x00",
 	}
 	rng.Shuffle(len(dylibNames), func(i, j int) { dylibNames[i], dylibNames[j] = dylibNames[j], dylibNames[i] })
-	for i := 0; i < numDylibs; i++ {
+	for i := range numDylibs {
 		binary.LittleEndian.PutUint32(buf[lc:], lcLoadDylib)
 		binary.LittleEndian.PutUint32(buf[lc+4:], uint32(lcLoadDylibSize))
 		binary.LittleEndian.PutUint32(buf[lc+8:], 24)
@@ -2233,7 +2233,7 @@ func genDEX(rng *rand.Rand, size int) []byte {
 		cursor = size
 	}
 
-	for i := 0; i < numStrings; i++ {
+	for i := range numStrings {
 		if cursor >= size {
 			stringDataOffsets[i] = uint32(dataOff)
 			continue
@@ -2273,7 +2273,7 @@ func genDEX(rng *rand.Rand, size int) []byte {
 	// ------------------------------------------------------------------
 	// String ID list — array of uint32 offsets into string data
 	// ------------------------------------------------------------------
-	for i := 0; i < numStrings; i++ {
+	for i := range numStrings {
 		off := stringIdsOff + i*4
 		if off+4 <= size {
 			binary.LittleEndian.PutUint32(buf[off:], stringDataOffsets[i])
@@ -2283,7 +2283,7 @@ func genDEX(rng *rand.Rand, size int) []byte {
 	// ------------------------------------------------------------------
 	// Type ID list — each entry is a uint32 index into string IDs
 	// ------------------------------------------------------------------
-	for i := 0; i < numTypes; i++ {
+	for i := range numTypes {
 		off := typeIdsOff + i*4
 		if off+4 <= size {
 			binary.LittleEndian.PutUint32(buf[off:], uint32(rng.IntN(numStrings)))
@@ -2293,7 +2293,7 @@ func genDEX(rng *rand.Rand, size int) []byte {
 	// ------------------------------------------------------------------
 	// Proto ID list — shorty_idx, return_type_idx, parameters_off (each 12 bytes)
 	// ------------------------------------------------------------------
-	for i := 0; i < numProtos; i++ {
+	for i := range numProtos {
 		off := protoIdsOff + i*12
 		if off+12 <= size {
 			binary.LittleEndian.PutUint32(buf[off:], uint32(rng.IntN(numStrings))) // shorty_idx
@@ -2305,7 +2305,7 @@ func genDEX(rng *rand.Rand, size int) []byte {
 	// ------------------------------------------------------------------
 	// Field ID list — class_idx (u16), type_idx (u16), name_idx (u32) — 8 bytes each
 	// ------------------------------------------------------------------
-	for i := 0; i < numFields; i++ {
+	for i := range numFields {
 		off := fieldIdsOff + i*8
 		if off+8 <= size {
 			binary.LittleEndian.PutUint16(buf[off:], uint16(rng.IntN(numTypes)))
@@ -2317,7 +2317,7 @@ func genDEX(rng *rand.Rand, size int) []byte {
 	// ------------------------------------------------------------------
 	// Method ID list — class_idx (u16), proto_idx (u16), name_idx (u32) — 8 bytes each
 	// ------------------------------------------------------------------
-	for i := 0; i < numMethods; i++ {
+	for i := range numMethods {
 		off := methodIdsOff + i*8
 		if off+8 <= size {
 			binary.LittleEndian.PutUint16(buf[off:], uint16(rng.IntN(numTypes)))
@@ -2332,7 +2332,7 @@ func genDEX(rng *rand.Rand, size int) []byte {
 	//         source_file_idx, annotations_off, class_data_off, static_values_off
 	// ------------------------------------------------------------------
 	accessFlags := []uint32{0x0001, 0x0011, 0x0101, 0x0001 | 0x0400}
-	for i := 0; i < numClasses; i++ {
+	for i := range numClasses {
 		off := classDefsOff + i*32
 		if off+32 <= size {
 			binary.LittleEndian.PutUint32(buf[off:], uint32(rng.IntN(numTypes)))
@@ -2669,7 +2669,7 @@ func genEmail(rng *rand.Rand, size int) []byte {
 	// Build plain-text body
 	plainBody := ""
 	numParas := 1 + rng.IntN(4)
-	for i := 0; i < numParas; i++ {
+	for range numParas {
 		plainBody += bodyParagraphs[rng.IntN(len(bodyParagraphs))]
 	}
 	closing := closings[rng.IntN(len(closings))]
@@ -2919,7 +2919,7 @@ func genEasterEgg(rng *rand.Rand, size int) []byte {
 	// Place inserts evenly across the file
 	// ------------------------------------------------------------------
 	spacing := size / (numInserts + 1)
-	for i := 0; i < numInserts; i++ {
+	for i := range numInserts {
 		insertType := insertTypes[i%len(insertTypes)]
 		pos := spacing * (i + 1)
 		end := pos + insertSize
@@ -3166,7 +3166,7 @@ func genPowerShellSigned(rng *rand.Rand, size int) []byte {
 	sig = append(sig, "\r\n# SIG # Begin signature block\r\n"...)
 	numLines := 20 + rng.IntN(21) // 20–40 lines
 	lineArr := make([]byte, 76)
-	for i := 0; i < numLines; i++ {
+	for range numLines {
 		for j := range lineArr {
 			lineArr[j] = b64Chars[rng.IntN(len(b64Chars))]
 		}
@@ -3548,7 +3548,7 @@ func Hamming(s Digest, index uint32) uint16 {
 func TotalElements(s Digest) uint64 {
 	sd := s.(*sdbf)
 	var total uint64
-	for i := uint32(0); i < sd.bfCount; i++ {
+	for i := range sd.bfCount {
 		total += uint64(sd.elemCount(i))
 	}
 	return total
@@ -3575,7 +3575,7 @@ func streamDigestPayload(sd Digest) []string {
 		minHam = uint32(math.MaxUint32)
 		maxHam = 0
 		var sumH uint64
-		for i := uint32(0); i < n; i++ {
+		for i := range n {
 			e := ElemCount(sd, i)
 			h := uint32(Hamming(sd, i))
 			if e < minElem {
@@ -3625,7 +3625,7 @@ func ddDigestPayload(sd Digest) []string {
 	totalElements := TotalElements(sd)
 
 	var sumH uint64
-	for i := uint32(0); i < filterCount; i++ {
+	for i := range filterCount {
 		sumH += uint64(Hamming(sd, i))
 	}
 

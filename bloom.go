@@ -48,7 +48,7 @@ func mustNewBloomFilter(size uint64, hashCount uint16, maxElem uint64) *bloomFil
 func (bf *bloomFilter) insertSha1(sha1 []uint32) bool {
 	var pos, k uint32
 	var bitCount uint16
-	for i := uint16(0); i < bf.hashCount; i++ {
+	for i := range bf.hashCount {
 		pos = sha1[i] & uint32(bf.bitMask)
 		k = pos >> 3
 		if (bf.buffer[k] & bitPositions[pos&0x7]) != 0 {

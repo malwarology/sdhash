@@ -44,8 +44,7 @@ func mustDigest(b *testing.B, data []byte, blockSize uint32) Digest {
 func runCompute(b *testing.B, data []byte, blockSize uint32) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(data)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		factory, err := New(data)
 		if err != nil {
 			b.Fatal(err)
@@ -75,8 +74,7 @@ func BenchmarkCompute(b *testing.B) {
 func BenchmarkString(b *testing.B) {
 	sd := mustDigest(b, randomBuf(benchMid, 3, 3), 0)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = sd.String()
 	}
 }
@@ -85,8 +83,7 @@ func BenchmarkString(b *testing.B) {
 func BenchmarkParse(b *testing.B) {
 	s := mustDigest(b, randomBuf(benchMid, 4, 4), 0).String()
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := Parse(s); err != nil {
 			b.Fatal(err)
 		}
@@ -103,15 +100,13 @@ func BenchmarkCompare(b *testing.B) {
 
 	b.Run("stream", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			sa.Similarity(sb)
 		}
 	})
 	b.Run("dd", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			da.Similarity(db)
 		}
 	})

@@ -103,7 +103,7 @@ func (sd *sdbf) generateChunkRanks(fileBuffer []byte, chunkRanks []uint16) {
 	defer asciiPool.Put(asciiPtr)
 
 	limit := len(fileBuffer) - sd.entropyWinSize
-	for offset := 0; offset < limit; offset++ {
+	for offset := range limit {
 		if offset%blockSize == 0 { // full entropy recalculation at block boundaries
 			entropy = entropy64Compute(fileBuffer[offset:], ascii)
 		} else { // incremental rolling update
@@ -168,7 +168,7 @@ func (sd *sdbf) generateChunkScores(chunkRanks []uint16, chunkSize uint64, chunk
 		h, tail := 0, 0
 
 		// Seed the deque with the first window [0, popWin).
-		for j := 0; j < popWin; j++ {
+		for j := range popWin {
 			if chunkRanks[j] == 0 {
 				continue
 			}
@@ -180,7 +180,7 @@ func (sd *sdbf) generateChunkScores(chunkRanks []uint16, chunkSize uint64, chunk
 		}
 
 		numWindows := n - popWin
-		for i := 0; i < numWindows; i++ {
+		for i := range numWindows {
 			// Drop front indices that have fallen out of the window.
 			for h != tail && int(ring[h]) < i {
 				h = (h + 1) & dqMask
@@ -205,7 +205,7 @@ func (sd *sdbf) generateChunkScores(chunkRanks []uint16, chunkSize uint64, chunk
 
 	if scoreHistogram != nil {
 		popWinU := uint64(sd.popWinSize)
-		for i := uint64(0); i < chunkSize-popWinU; i++ {
+		for i := range chunkSize - popWinU {
 			scoreHistogram[chunkScores[i]]++
 		}
 	}
@@ -234,7 +234,7 @@ func (sd *sdbf) generateChunkHash(fileBuffer []byte, chunkPos uint64, chunkScore
 	var bigFilterElemCount uint64
 
 	if chunkSize > uint64(sd.popWinSize) {
-		for i := uint64(0); i < chunkSize-uint64(sd.popWinSize); i++ {
+		for i := range chunkSize - uint64(sd.popWinSize) {
 			if uint32(chunkScores[i]) > sd.threshold {
 				sha1Hash := u32sha1(fileBuffer[chunkPos+i : chunkPos+i+uint64(sd.popWinSize)])
 
@@ -391,7 +391,7 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) error {
 		panicOnce sync.Once
 	)
 
-	for i := uint64(0); i < qt; i++ {
+	for i := range qt {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(idx uint64) {
@@ -434,7 +434,7 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) error {
 	// rem) as the original loop, so bigFilter cross-chunk deduplication is
 	// preserved without any change to that function.
 	var chunkPos uint64
-	for i := uint64(0); i < totalChunks; i++ {
+	for i := range totalChunks {
 		r := results[i]
 		sd.generateChunkHash(fileBuffer, chunkPos, r.scores, r.size)
 		chunkPos += r.size
@@ -490,7 +490,7 @@ func (sd *sdbf) generateBlockSdbf(fileBuffer []byte) error {
 
 	sem := make(chan struct{}, runtime.NumCPU())
 	var wg sync.WaitGroup
-	for i := uint64(0); i < qt; i++ {
+	for i := range qt {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(idx uint64) {

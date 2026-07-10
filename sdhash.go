@@ -92,7 +92,7 @@ func (sd *sdbf) FeatureDensity() float64 {
 		}
 	} else {
 		// DD (block) mode: each filter tracks its own count.
-		for i := uint32(0); i < sd.bfCount; i++ {
+		for i := range sd.bfCount {
 			totalElements += uint64(sd.elemCounts[i])
 		}
 	}
@@ -130,7 +130,7 @@ func (sd *sdbf) String() string {
 		qt, rem := sd.bfCount/6, sd.bfCount%6
 		b64Block := uint64(6 * sd.bfSize)
 		var pos uint64
-		for i := uint32(0); i < qt; i++ {
+		for range qt {
 			sb.WriteString(base64.StdEncoding.EncodeToString(sd.buffer[pos : pos+b64Block]))
 			pos += b64Block
 		}
@@ -139,7 +139,7 @@ func (sd *sdbf) String() string {
 		}
 	} else {
 		_, _ = fmt.Fprintf(&sb, "%d:%d:%d", sd.maxElem, sd.bfCount, sd.ddBlockSize)
-		for i := uint32(0); i < sd.bfCount; i++ {
+		for i := range sd.bfCount {
 			_, _ = fmt.Fprintf(&sb, ":%02x:", sd.elemCounts[i])
 			sb.WriteString(base64.StdEncoding.EncodeToString(sd.buffer[i*sd.bfSize : i*sd.bfSize+sd.bfSize]))
 		}
@@ -163,7 +163,7 @@ func (sd *sdbf) elemCount(index uint32) uint32 {
 // computeHamming precomputes the hamming weight for each bloom filter in the buffer.
 func (sd *sdbf) computeHamming() {
 	sd.hamming = make([]uint16, sd.bfCount)
-	for i := uint32(0); i < sd.bfCount; i++ {
+	for i := range sd.bfCount {
 		var h uint16
 		for _, b := range sd.buffer[sd.bfSize*i : sd.bfSize*(i+1)] {
 			h += uint16(bits.OnesCount8(b))
@@ -302,7 +302,7 @@ func ParseReader(reader io.Reader) (Digest, error) {
 		}
 		sd.elemCounts = make([]uint16, bfCount)
 		sd.buffer = make([]byte, bfCount*bfSize)
-		for i := uint64(0); i < bfCount; i++ {
+		for i := range bfCount {
 			elemStr, err := readField(r)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read element count for filter %d: %w", i, err)

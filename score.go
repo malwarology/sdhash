@@ -32,7 +32,7 @@ func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 	var scoreSum float64
 	var sparseCount uint32   // source filter too sparse; sdbfMaxScore returned 0
 	var noTargetCount uint32 // no scoreable target filter; sdbfMaxScore returned -1
-	for i := uint32(0); i < bfCount1; i++ {
+	for i := range bfCount1 {
 		s := sdbfMaxScore(sdbf1, i, sdbf2)
 		if s < 0 {
 			// No target filter had enough elements to compare against.
@@ -73,7 +73,7 @@ func sdbfMaxScore(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64 {
 	}
 	bf1 := refSdbf.buffer[refIndex*bfSize:]
 	e1Cnt := refSdbf.hamming[refIndex]
-	for i := uint32(0); i < targetSdbf.bfCount; i++ {
+	for i := range targetSdbf.bfCount {
 		bf2 := targetSdbf.buffer[i*bfSize:]
 		s2 := targetSdbf.elemCount(i)
 		if s2 < minElemCount {

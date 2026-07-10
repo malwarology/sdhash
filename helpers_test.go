@@ -104,11 +104,8 @@ func checkEqual[T comparable](t *testing.T, want, got T, msg string) {
 // firstDiff returns the index of the first byte at which a and b differ,
 // or the length of the shorter string if one is a prefix of the other.
 func firstDiff(a, b string) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(b), len(a))
+	for i := range n {
 		if a[i] != b[i] {
 			return i
 		}
@@ -273,7 +270,7 @@ func bruteScoresFirstRun(ranks []uint16) []uint16 {
 	if chunkSize <= popWin {
 		return scores
 	}
-	for w := uint64(0); w < chunkSize-popWin; w++ {
+	for w := range chunkSize - popWin {
 		minRank := ranks[w]
 		minPos := w
 		for j := w + 1; j < w+popWin; j++ {
@@ -294,11 +291,8 @@ func bruteScoresFirstRun(ranks []uint16) []uint16 {
 // firstDiffUint16 returns the index of the first position at which a and b
 // differ, or -1 if they are equal.
 func firstDiffUint16(a, b []uint16) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(b), len(a))
+	for i := range n {
 		if a[i] != b[i] {
 			return i
 		}
@@ -374,14 +368,8 @@ func checkChunkScoresMatchSpec(t *testing.T, ranks []uint16, msg string) {
 	if idx < 0 {
 		return
 	}
-	lo := idx - 3
-	if lo < 0 {
-		lo = 0
-	}
-	hi := idx + 4
-	if hi > len(ranks) {
-		hi = len(ranks)
-	}
+	lo := max(idx-3, 0)
+	hi := min(idx+4, len(ranks))
 	t.Errorf("%s: chunkScores diverge from per-window spec at pos %d (got=%d want=%d)\n  ranks[%d:%d]=%v\n  got  [%d:%d]=%v\n  want [%d:%d]=%v",
 		msg, idx, got[idx], want[idx], lo, hi, ranks[lo:hi], lo, hi, got[lo:hi], lo, hi, want[lo:hi])
 }

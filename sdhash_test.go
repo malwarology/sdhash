@@ -231,7 +231,7 @@ func TestSimilarData_ScoresHigh(t *testing.T) {
 	copy(buf2, buf1)
 	flipRng := rand.New(rand.NewPCG(99, 99))
 	flips := size / 1000
-	for i := 0; i < flips; i++ {
+	for range flips {
 		idx := int(flipRng.Uint64() % uint64(size))
 		buf2[idx] ^= 0xFF
 	}
@@ -254,7 +254,7 @@ func TestConcurrent_ComputeMultiple(t *testing.T) {
 	errs := make([]error, goroutines)
 
 	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -295,7 +295,7 @@ func TestConcurrent_Compare(t *testing.T) {
 	const goroutines = 20
 	scores := make([]int, goroutines)
 	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -669,7 +669,6 @@ func TestParseSdbf_ErrorCases(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := Parse(tc.input)
