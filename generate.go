@@ -466,15 +466,24 @@ func (sd *sdbf) generateSingleBlockSdbf(fileBuffer []byte, blockNum uint64) {
 
 	sd.generateChunkRanks(fileBuffer, chunkRanks)
 	sd.generateChunkScores(chunkRanks, blockSize, chunkScores, scoreHistogram[:])
-	var k uint32
-	for k = 65; k >= sd.threshold; k-- {
+	// k walks scoreHistogram from 65 down to threshold. Use a signed int
+	// here rather than uint32: if threshold were ever 0, an unsigned k
+	// would wrap past zero instead of terminating the loop, driving an
+	// out-of-bounds index into scoreHistogram. threshold is currently
+	// always the constant 16, so this is defensive hardening rather than
+	// a fix for a reachable bug.
+	k := 65
+	for ; k >= int(sd.threshold); k-- {
 		if sum <= sd.maxElem && (sum+uint32(scoreHistogram[k]) > sd.maxElem) {
 			break
 		}
 		sum += uint32(scoreHistogram[k])
 	}
+	if k < 0 {
+		k = 0
+	}
 	allowed = sd.maxElem - sum
-	sd.generateBlockHash(fileBuffer, blockNum, chunkScores, 0, k, int32(allowed))
+	sd.generateBlockHash(fileBuffer, blockNum, chunkScores, 0, uint32(k), int32(allowed))
 }
 
 // generateBlockSdbf computes the sdbf hash for a buffer in block-aligned (dd) mode.
