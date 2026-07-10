@@ -3,9 +3,12 @@ package sdhash
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"math/rand/v2"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -222,6 +225,40 @@ func ddDigest(t *testing.T, buf []byte, blockSize uint32) Digest {
 	sd, err := factory.WithBlockSize(blockSize).Compute()
 	mustNoError(t, err)
 	return sd
+}
+
+// buildDDDigest constructs a valid DD-mode wire-format digest string with one
+// filter per entry in filters (each exactly bfSize bytes). elemCounts must be
+// the same length as filters. This lets tests craft digests with precise,
+// independently-known per-filter content without going through the real hash
+// generation pipeline.
+func buildDDDigest(origFileSize uint64, ddBlockSize uint32, filters [][]byte, elemCounts []uint16) string {
+	var sb strings.Builder
+	_, _ = fmt.Fprintf(&sb, "sdbf-dd:03:1:-:%d:sha1:256:5:7ff:%d:%d:%d", origFileSize, maxElemDd, len(filters), ddBlockSize)
+	for i, f := range filters {
+		_, _ = fmt.Fprintf(&sb, ":%02x:%s", elemCounts[i], base64.StdEncoding.EncodeToString(f))
+	}
+	sb.WriteByte('\n')
+	return sb.String()
+}
+
+// fillBloomFeatures inserts numFeatures deterministic, pseudo-random SHA1-like
+// hashes into buf (a raw bfSize-byte bloom filter buffer), seeded so that
+// different seed values produce largely disjoint feature sets. This mirrors
+// the structure of a real, production-inserted bloom filter (via
+// bfInsertSha1) closely enough to exercise realistic AND-popcount scoring in
+// tests, without needing to run the actual chunk-ranking/scoring pipeline.
+func fillBloomFeatures(buf []byte, seed uint32, numFeatures int) {
+	for k := range numFeatures {
+		h := [5]uint32{
+			seed*2654435761 + uint32(k)*40503 + 1,
+			seed*40503 + uint32(k)*2654435761 + 2,
+			seed + uint32(k)*97 + 3,
+			seed*97 + uint32(k) + 5,
+			seed ^ (uint32(k)*340573321 + 7),
+		}
+		bfInsertSha1(buf, h)
+	}
 }
 
 // newTestSdbf builds a minimal internal sdbf ready for generateChunkSdbf.

@@ -1,8 +1,10 @@
 package sdhash
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
+	"math/bits"
 	"os"
 	"strings"
 	"testing"
@@ -91,6 +93,17 @@ import (
 // ├── 00350000  Golden: monotonic minimum at left edge
 // ├── 00360000  Golden: all-equal rightmost-of-window, one increment per window
 // └── 00370000  Golden: all-zero produces no scores
+//
+// Issue 62 — uint32 overflow in DD-mode filter indexing can panic or
+// silently corrupt digests on large inputs
+//    https://github.com/malwarology/sdhash/issues/62
+// ├── 00380000  computeHamming offset arithmetic at the reported overflow scale
+// ├── 00390000  computeHamming correctness across many filters
+// ├── 00400000  String DD branch offset arithmetic at the reported overflow scale
+// ├── 00410000  String DD branch round-trip preserves buffer across many filters
+// ├── 00420000  generateChunkSdbf trim-step arithmetic at the reported overflow scale
+// ├── 00430000  sdbfMaxScore offset arithmetic at the reported overflow scale
+// └── 00440000  sdbfMaxScore correctly addresses each filter across the full index range
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -947,4 +960,330 @@ func TestIssue57_Golden_AllZero(t *testing.T) {
 	ranks := make([]uint16, 66)
 	want := make([]uint16, 66)
 	checkChunkScoresGolden(t, ranks, want, "all-zero produces no scores (regression: issue #57)")
+}
+
+// =========================================================================
+// Issue 62 — uint32 overflow in DD-mode filter indexing can panic or
+// silently corrupt digests on large inputs
+// https://github.com/malwarology/sdhash/issues/62
+// =========================================================================
+//
+// The finding names four call sites that compute a byte offset into
+// sd.buffer from a bfSize/bfCount-derived index: computeHamming and the DD
+// branch of String() (both sdhash.go), the post-generation buffer-trim step
+// in generateChunkSdbf (generate.go), and sdbfMaxScore (score.go). Each is
+// covered by two tests below:
+//
+//   - An "offset arithmetic" characterization test that evaluates the exact
+//     expression now used at that call site (cited by file:line) against the
+//     finding's own reported reproduction numbers (bfSize=256, index=2^24-1,
+//     the point at which bfSize*i first overflows a uint32), and also
+//     recomputes what the pre-fix uint32 arithmetic produced at those same
+//     numbers, to keep the test tied to a concretely observed failure mode
+//     rather than an abstract claim about overflow.
+//
+//   - A real-function test that calls the actual production function/method
+//     (not a reimplementation) across many filters, to confirm the uint64
+//     rewrite didn't just avoid overflow but still computes the *correct*
+//     byte range at ordinary, in-range scale.
+//
+// A literal end-to-end reproduction at the reported scale is not attempted:
+// reaching an actual 2^32-byte offset through any of these functions
+// requires touching (computeHamming, String) or allocating (the trim step,
+// sdbfMaxScore) on the order of 4.3 GiB, regardless of how bfSize and
+// bfCount are split — i_overflow * bfSize = 2^32/bfSize * bfSize ≈ 2^32 is
+// an invariant, not an implementation detail that can be engineered around.
+// That figure exceeds what's available in many CI/dev environments (this
+// one included), and the finding itself was "confirmed algebraically" for
+// the same reason.
+//
+// The trim step's real-function coverage at ordinary scale already exists
+// independently of this issue: TestGenerateChunkSdbf_MultiChunk_SparseLastFilter
+// in sdhash_test.go asserts len(sd.buffer) == bfCount*bfSize after pruning
+// and trimming, so it is not duplicated here.
+
+// ---------------------------------------------------------------------------
+// 00380000  computeHamming offset arithmetic at the reported overflow scale
+// ---------------------------------------------------------------------------
+
+// TestIssue62_ComputeHammingOffsetArithmetic verifies the offset arithmetic
+// in computeHamming (sdhash.go:170, "start := bfSize * uint64(i)") does not
+// invert for the finding's own reproduction numbers: bfSize=256,
+// i=2^24-1. Under the pre-fix uint32 arithmetic, bfSize*i wrapped to
+// 4294967040 and bfSize*(i+1) wrapped to 0, producing the inverted slice
+// [4294967040:0] described in the finding.
+func TestIssue62_ComputeHammingOffsetArithmetic(t *testing.T) {
+	t.Parallel()
+
+	// i is a runtime variable, not a constant: computing uint32(bfSize)*(i+1)
+	// as a constant expression would overflow at compile time and fail to
+	// build, masking the very runtime wraparound this test demonstrates.
+	i := uint32(1<<24 - 1) // 16,777,215 — the finding's own reproduction index
+	bfSizeU64 := uint64(bfSize)
+
+	// Mirrors sdhash.go:170.
+	start := bfSizeU64 * uint64(i)
+	end := start + bfSizeU64
+	checkEqual(t, uint64(4294967040), start,
+		"uint64 start must equal the finding's reported value (regression: issue #62)")
+	checkTrue(t, start < end,
+		"uint64 start must be less than end, i.e. not inverted (regression: issue #62)")
+
+	// Recompute what the pre-fix uint32 arithmetic actually produced, so
+	// this test is tied to a concretely observed failure mode.
+	oldStart := uint32(bfSize) * i
+	oldEnd := uint32(bfSize) * (i + 1)
+	checkEqual(t, uint32(4294967040), oldStart,
+		"sanity: old uint32 start must match the finding's reported value")
+	checkEqual(t, uint32(0), oldEnd,
+		"sanity: old uint32 end must wrap to 0, inverting the slice")
+	checkTrue(t, oldStart > oldEnd,
+		"sanity: the pre-fix uint32 arithmetic must produce an inverted slice bound")
+}
+
+// ---------------------------------------------------------------------------
+// 00390000  computeHamming correctness across many filters
+// ---------------------------------------------------------------------------
+
+// TestIssue62_ComputeHammingCorrectAcrossManyFilters calls the real
+// computeHamming function (invoked automatically by Parse, sdhash.go:394)
+// across many filters with per-filter distinguishable content, confirming
+// that the uint64 rewrite still computes the correct hamming weight at
+// every index. This is a property the characterization test above cannot
+// establish on its own, since it does not call computeHamming itself.
+func TestIssue62_ComputeHammingCorrectAcrossManyFilters(t *testing.T) {
+	t.Parallel()
+
+	const numFilters = 300
+	filters := make([][]byte, numFilters)
+	elemCounts := make([]uint16, numFilters)
+	for i := range numFilters {
+		f := make([]byte, bfSize)
+		for j := range f {
+			f[j] = byte(i)
+		}
+		filters[i] = f
+		elemCounts[i] = 0x20
+	}
+
+	digestStr := buildDDDigest(uint64(numFilters*1024), 1024, filters, elemCounts)
+	digest, err := Parse(digestStr)
+	mustNoError(t, err, "parsing the crafted many-filter DD digest must succeed")
+
+	sd := digest.(*sdbf)
+	checkEqual(t, uint32(numFilters), sd.bfCount, "bfCount must match the number of crafted filters")
+
+	for i := range numFilters {
+		want := uint16(bfSize * bits.OnesCount8(byte(i)))
+		checkEqual(t, want, sd.hamming[i], fmt.Sprintf("hamming weight for filter %d (regression: issue #62)", i))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00400000  String DD branch offset arithmetic at the reported overflow scale
+// ---------------------------------------------------------------------------
+
+// TestIssue62_StringDDBranchOffsetArithmetic verifies the offset arithmetic
+// in the DD branch of String() (sdhash.go:145, "start := uint64(i) *
+// bfSize") does not invert for the finding's own reproduction numbers. The
+// multiplication order is reversed relative to computeHamming's ("uint64(i)
+// * bfSize" vs "bfSize * uint64(i)") but is the same call site named
+// separately in the finding, so it is tested independently here rather than
+// folded into TestIssue62_ComputeHammingOffsetArithmetic.
+//
+//goland:noinspection DuplicatedCode
+func TestIssue62_StringDDBranchOffsetArithmetic(t *testing.T) {
+	t.Parallel()
+
+	// i is a runtime variable, not a constant: see the comment in
+	// TestIssue62_ComputeHammingOffsetArithmetic for why.
+	i := uint32(1<<24 - 1)
+	bfSizeU64 := uint64(bfSize)
+
+	// Mirrors sdhash.go:145.
+	start := uint64(i) * bfSizeU64
+	end := start + bfSizeU64
+	checkEqual(t, uint64(4294967040), start,
+		"uint64 start must equal the finding's reported value (regression: issue #62)")
+	checkTrue(t, start < end,
+		"uint64 start must be less than end, i.e. not inverted (regression: issue #62)")
+
+	oldStart := i * uint32(bfSize)
+	oldEnd := (i + 1) * uint32(bfSize)
+	checkEqual(t, uint32(4294967040), oldStart,
+		"sanity: old uint32 start must match the finding's reported value")
+	checkEqual(t, uint32(0), oldEnd,
+		"sanity: old uint32 end must wrap to 0, inverting the slice")
+	checkTrue(t, oldStart > oldEnd,
+		"sanity: the pre-fix uint32 arithmetic must produce an inverted slice bound")
+}
+
+// ---------------------------------------------------------------------------
+// 00410000  String DD branch round-trip preserves buffer across many filters
+// ---------------------------------------------------------------------------
+
+// TestIssue62_StringDDBranchRoundTripPreservesBufferAcrossManyFilters calls
+// the real String() DD branch (sdhash.go:140-147) on a many-filter digest
+// with distinguishable, position-dependent per-filter content, then parses
+// the result back and confirms every filter's bytes and element count
+// round-trip to the exact same values at the exact same index. This directly
+// exercises String()'s own offset arithmetic (as opposed to
+// TestIssue62_ComputeHammingCorrectAcrossManyFilters, which only exercises
+// computeHamming on the way in).
+func TestIssue62_StringDDBranchRoundTripPreservesBufferAcrossManyFilters(t *testing.T) {
+	t.Parallel()
+
+	const numFilters = 300
+	filters := make([][]byte, numFilters)
+	elemCounts := make([]uint16, numFilters)
+	for i := range numFilters {
+		f := make([]byte, bfSize)
+		for j := range f {
+			f[j] = byte(i*37 + j) // distinct, position-dependent content per filter
+		}
+		filters[i] = f
+		elemCounts[i] = uint16(0x10 + i%0x50)
+	}
+
+	digestStr := buildDDDigest(uint64(numFilters*1024), 1024, filters, elemCounts)
+	digest1, err := Parse(digestStr)
+	mustNoError(t, err, "parsing the crafted many-filter DD digest must succeed")
+
+	serialized := digest1.String()
+	digest2, err := Parse(serialized)
+	mustNoError(t, err, "parsing the round-tripped digest must succeed")
+
+	sd2 := digest2.(*sdbf)
+	checkEqual(t, uint32(numFilters), sd2.bfCount, "bfCount must be unchanged by the round trip")
+
+	for i := range numFilters {
+		want := filters[i]
+		got := sd2.buffer[i*bfSize : (i+1)*bfSize]
+		checkTrue(t, bytes.Equal(want, got),
+			fmt.Sprintf("filter %d bytes must round-trip unchanged (regression: issue #62)", i))
+		checkEqual(t, elemCounts[i], sd2.elemCounts[i],
+			fmt.Sprintf("filter %d elemCount must round-trip unchanged (regression: issue #62)", i))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00420000  generateChunkSdbf trim-step arithmetic at the reported overflow scale
+// ---------------------------------------------------------------------------
+
+// TestIssue62_GenerateSdbfTrimStepArithmetic verifies the buffer-trim
+// arithmetic in generateChunkSdbf (generate.go:369 and generate.go:451,
+// "newLen := uint64(sd.bfCount) * uint64(sd.bfSize)") computes the correct,
+// non-wrapped length at bfCount=2^24, bfSize=256 — the point at which the
+// real product is exactly 2^32. This is the finding's second impact:
+// unlike the indexing call sites above, an overflowed uint32 product here
+// does not panic (0 is always a valid slice length) — it silently
+// truncates the digest to a corrupt result.
+func TestIssue62_GenerateSdbfTrimStepArithmetic(t *testing.T) {
+	t.Parallel()
+
+	// bCount and bSize are runtime variables, not constants: see the comment
+	// in TestIssue62_ComputeHammingOffsetArithmetic for why.
+	bCount := uint32(1 << 24) // 16,777,216
+	bSize := uint32(256)
+
+	// Mirrors generate.go:369 and generate.go:451.
+	newLen := uint64(bCount) * uint64(bSize)
+	checkEqual(t, uint64(1)<<32, newLen,
+		"uint64 product must equal 2^32 exactly, not wrap (regression: issue #62)")
+
+	oldProduct := bCount * bSize
+	checkEqual(t, uint32(0), oldProduct,
+		"sanity: the old uint32 product must wrap to exactly 0 for these inputs, "+
+			"silently truncating rather than panicking")
+}
+
+// ---------------------------------------------------------------------------
+// 00430000  sdbfMaxScore offset arithmetic at the reported overflow scale
+// ---------------------------------------------------------------------------
+
+// TestIssue62_SdbfMaxScoreOffsetArithmetic verifies the offset arithmetic in
+// sdbfMaxScore (score.go:74, "bf1 := refSdbf.buffer[uint64(refIndex)*bfSize:]")
+// does not invert for the finding's own reproduction numbers.
+//
+//goland:noinspection DuplicatedCode
+func TestIssue62_SdbfMaxScoreOffsetArithmetic(t *testing.T) {
+	t.Parallel()
+
+	// refIndex is a runtime variable, not a constant: see the comment in
+	// TestIssue62_ComputeHammingOffsetArithmetic for why.
+	refIndex := uint32(1<<24 - 1)
+	bfSizeU64 := uint64(bfSize)
+
+	// Mirrors score.go:74.
+	start := uint64(refIndex) * bfSizeU64
+	end := start + bfSizeU64
+	checkEqual(t, uint64(4294967040), start,
+		"uint64 start must equal the finding's reported value (regression: issue #62)")
+	checkTrue(t, start < end,
+		"uint64 start must be less than end, i.e. not inverted (regression: issue #62)")
+
+	oldStart := refIndex * uint32(bfSize)
+	oldEnd := (refIndex + 1) * uint32(bfSize)
+	checkEqual(t, uint32(4294967040), oldStart,
+		"sanity: old uint32 start must match the finding's reported value")
+	checkEqual(t, uint32(0), oldEnd,
+		"sanity: old uint32 end must wrap to 0, inverting the slice")
+	checkTrue(t, oldStart > oldEnd,
+		"sanity: the pre-fix uint32 arithmetic must produce an inverted slice bound")
+}
+
+// ---------------------------------------------------------------------------
+// 00440000  sdbfMaxScore correctly addresses each filter across the full index range
+// ---------------------------------------------------------------------------
+
+// TestIssue62_SdbfMaxScoreCorrectAcrossFullIndexRange calls the real
+// sdbfMaxScore function directly, for every index across a many-filter
+// digest, confirming refIndex correctly addresses that filter's own bytes.
+//
+// Construction: self-comparison (Similarity(sd, sd), as used by
+// TestDDMode_SelfComparison) is not a strong enough test for this specific
+// arithmetic, because sdbfMaxScore searches for the best match across every
+// target index — a uniformly wrong offset applied identically to both
+// operands of a self-comparison would still find a matching pair somewhere
+// and report a perfect score. To eliminate that ambiguity, each ref filter
+// is compared against a *single-filter* target digest built independently
+// (via ordinary small-int slicing, not the arithmetic under test) to hold
+// only ref's filter i's true content. Filters are populated with disjoint,
+// per-index bloom-filter features (via fillBloomFeatures). A misaddressed
+// ref filter — reading an adjacent filter's unrelated feature set instead
+// — would then score well below a perfect match against this deliberately
+// unambiguous target, rather than happening to match somewhere else in a
+// larger target digest.
+func TestIssue62_SdbfMaxScoreCorrectAcrossFullIndexRange(t *testing.T) {
+	t.Parallel()
+
+	const numFilters = 300
+	const featuresPerFilter = 40 // well above minElemCount; hamming weight ~189, cutoffBySum[80]=18
+
+	filters := make([][]byte, numFilters)
+	elemCounts := make([]uint16, numFilters)
+	for i := range numFilters {
+		f := make([]byte, bfSize)
+		fillBloomFeatures(f, uint32(i), featuresPerFilter)
+		filters[i] = f
+		elemCounts[i] = featuresPerFilter
+	}
+
+	digestStr := buildDDDigest(uint64(numFilters*1024), 1024, filters, elemCounts)
+	digest, err := Parse(digestStr)
+	mustNoError(t, err, "parsing the crafted many-filter DD digest must succeed")
+	ref := digest.(*sdbf)
+
+	for i := range numFilters {
+		target := newTestSdbf(t)
+		target.bfCount = 1
+		target.maxElem = maxElemDd
+		target.buffer = append([]byte(nil), filters[i]...)
+		target.elemCounts = []uint16{featuresPerFilter}
+		target.computeHamming()
+
+		score := sdbfMaxScore(ref, uint32(i), target)
+		checkEqual(t, 1.0, score,
+			fmt.Sprintf("sdbfMaxScore must find a perfect match for filter %d against its own content (regression: issue #62)", i))
+	}
 }
