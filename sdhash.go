@@ -139,9 +139,11 @@ func (sd *sdbf) String() string {
 		}
 	} else {
 		_, _ = fmt.Fprintf(&sb, "%d:%d:%d", sd.maxElem, sd.bfCount, sd.ddBlockSize)
+		bfSize := uint64(sd.bfSize)
 		for i := range sd.bfCount {
 			_, _ = fmt.Fprintf(&sb, ":%02x:", sd.elemCounts[i])
-			sb.WriteString(base64.StdEncoding.EncodeToString(sd.buffer[i*sd.bfSize : i*sd.bfSize+sd.bfSize]))
+			start := uint64(i) * bfSize
+			sb.WriteString(base64.StdEncoding.EncodeToString(sd.buffer[start : start+bfSize]))
 		}
 	}
 	sb.WriteByte('\n')
@@ -163,9 +165,11 @@ func (sd *sdbf) elemCount(index uint32) uint32 {
 // computeHamming precomputes the hamming weight for each bloom filter in the buffer.
 func (sd *sdbf) computeHamming() {
 	sd.hamming = make([]uint16, sd.bfCount)
+	bfSize := uint64(sd.bfSize)
 	for i := range sd.bfCount {
+		start := bfSize * uint64(i)
 		var h uint16
-		for _, b := range sd.buffer[sd.bfSize*i : sd.bfSize*(i+1)] {
+		for _, b := range sd.buffer[start : start+bfSize] {
 			h += uint16(bits.OnesCount8(b))
 		}
 		sd.hamming[i] = h

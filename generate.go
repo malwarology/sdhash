@@ -366,8 +366,8 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) error {
 			sd.bfCount--
 			sd.lastCount = sd.maxElem
 		}
-		if uint64(sd.bfCount)*uint64(sd.bfSize) < buffSize {
-			sd.buffer = sd.buffer[:sd.bfCount*sd.bfSize]
+		if newLen := uint64(sd.bfCount) * uint64(sd.bfSize); newLen < buffSize {
+			sd.buffer = sd.buffer[:newLen]
 		}
 		return nil
 	}
@@ -448,8 +448,8 @@ func (sd *sdbf) generateChunkSdbf(fileBuffer []byte, chunkSize uint64) error {
 	}
 
 	// Trim the buffer to the actual used size.
-	if uint64(sd.bfCount)*uint64(sd.bfSize) < buffSize {
-		sd.buffer = sd.buffer[:sd.bfCount*sd.bfSize]
+	if newLen := uint64(sd.bfCount) * uint64(sd.bfSize); newLen < buffSize {
+		sd.buffer = sd.buffer[:newLen]
 	}
 	return nil
 }

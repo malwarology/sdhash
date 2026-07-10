@@ -65,16 +65,16 @@ func sdbfScore(sdbf1 *sdbf, sdbf2 *sdbf) int {
 // filter had enough elements to score against, or a value in [0.0, 1.0] otherwise.
 func sdbfMaxScore(refSdbf *sdbf, refIndex uint32, targetSdbf *sdbf) float64 {
 	var maxScore float64 = -1
-	bfSize := refSdbf.bfSize
+	bfSize := uint64(refSdbf.bfSize)
 
 	s1 := refSdbf.elemCount(refIndex)
 	if s1 < minElemCount {
 		return 0
 	}
-	bf1 := refSdbf.buffer[refIndex*bfSize:]
+	bf1 := refSdbf.buffer[uint64(refIndex)*bfSize:]
 	e1Cnt := refSdbf.hamming[refIndex]
 	for i := range targetSdbf.bfCount {
-		bf2 := targetSdbf.buffer[i*bfSize:]
+		bf2 := targetSdbf.buffer[uint64(i)*bfSize:]
 		s2 := targetSdbf.elemCount(i)
 		if s2 < minElemCount {
 			continue
