@@ -342,6 +342,7 @@ func ParseReader(reader io.Reader) (Digest, error) {
 		sd.elemCounts = make([]uint16, bfCount)
 		sd.buffer = make([]byte, bfCount*bfSize)
 		expectedLen := base64.StdEncoding.EncodedLen(bfSize)
+		encodedBuf := make([]byte, expectedLen)
 		for i := range bfCount {
 			elemStr, err := readField(r)
 			if err != nil {
@@ -356,24 +357,54 @@ func ParseReader(reader io.Reader) (Digest, error) {
 				return nil, fmt.Errorf("element count %d for filter %d exceeds maxElem %d", elem, i, maxElem)
 			}
 
-			// Each block's base64 is delimited by ':' except the last, which ends
-			// at '\r\n', '\n', or EOF. expectedLen is a fixed constant (derived
-			// from bfSize, not attacker data), so bound the read to it plus a
-			// couple of bytes of slack for the delimiter/line terminator instead
-			// of letting ReadString buffer an unbounded run with no ':' or '\n'.
-			encodedBuffer, readErr := readBoundedString(r, ':', expectedLen+2)
-			var encodedStr string
-			if readErr != nil {
-				encodedStr = strings.TrimRight(encodedBuffer, "\r\n")
+			// Each block's base64 payload is a fixed, known length (derived
+			// from bfSize, not attacker data), so read exactly that many
+			// bytes instead of scanning for a delimiter. This removes an
+			// ambiguity the previous delimiter-search had for the last
+			// block specifically: it has no trailing ':', so a search for
+			// one had to run to the end of its bound regardless, silently
+			// consuming bytes belonging to whatever followed — including a
+			// second digest immediately concatenated in the same stream.
+			if _, err := io.ReadFull(r, encodedBuf); err != nil {
+				return nil, fmt.Errorf("failed to read encoded data for filter %d: %w", i, err)
+			}
+
+			if i < bfCount-1 {
+				// Every block but the last is delimited by a single ':'.
+				b, err := r.ReadByte()
+				if err != nil {
+					return nil, fmt.Errorf("failed to read delimiter after filter %d: %w", i, err)
+				}
+				if b != ':' {
+					return nil, fmt.Errorf("expected ':' delimiter after filter %d, got %q", i, b)
+				}
 			} else {
-				encodedStr = encodedBuffer[:len(encodedBuffer)-1]
+				// The last block ends at '\r\n', '\n', or EOF. Consume
+				// exactly that much and no more: anything else found here
+				// belongs to whatever follows (e.g. a second,
+				// immediately-concatenated digest) and must be left unread
+				// for the next parse, not swallowed.
+				b, err := r.ReadByte()
+				switch {
+				case err != nil:
+					// EOF is a valid terminator for the last block.
+				case b == '\n':
+					// Bare '\n' terminator, already fully consumed.
+				case b == '\r':
+					b2, err2 := r.ReadByte()
+					if err2 != nil || b2 != '\n' {
+						return nil, fmt.Errorf("malformed line ending after filter %d", i)
+					}
+				default:
+					// UnreadByte immediately follows a successful ReadByte,
+					// which bufio.Reader guarantees always succeeds in that
+					// position — there is always at least one byte to give
+					// back at this point.
+					_ = r.UnreadByte()
+				}
 			}
 
-			if len(encodedStr) != expectedLen {
-				return nil, fmt.Errorf("encoded block %d length %d does not match expected %d", i, len(encodedStr), expectedLen)
-			}
-
-			decoded, err := base64.StdEncoding.DecodeString(encodedStr)
+			decoded, err := base64.StdEncoding.DecodeString(string(encodedBuf))
 			if err != nil {
 				return nil, fmt.Errorf("failed to decode data for filter %d: %w", i, err)
 			}
