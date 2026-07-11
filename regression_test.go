@@ -123,12 +123,19 @@ import (
 // ├── 00500000  Stream mode bounded read does not consume unbounded input
 // └── 00510000  DD mode bounded read does not consume unbounded input
 //
+// Issue 65 — Latent unsigned-integer wraparound / out-of-bounds panic in
+// generateSingleBlockSdbf if threshold were ever 0
+//    https://github.com/malwarology/sdhash/issues/65
+// ├── 00520000  Zero-threshold loop wraparound characterization
+// ├── 00530000  Zero-threshold clamp produces permissive behavior
+// └── 00540000  Unclamped threshold would suppress all features
+//
 // Issue 66 — DD-mode last-block terminator handling over-reads into
 // immediately-following data, corrupting concatenated digest streams
 //    https://github.com/malwarology/sdhash/issues/66
-// ├── 00520000  Concatenated DD digests parse correctly
-// ├── 00530000  Last block terminator variants
-// └── 00540000  Non-last block delimiter mismatch rejected
+// ├── 00550000  Concatenated DD digests parse correctly
+// ├── 00560000  Last block terminator variants
+// └── 00570000  Non-last block delimiter mismatch rejected
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -1532,6 +1539,138 @@ func TestIssue64_DDModeBoundedReadDoesNotConsumeUnboundedInput(t *testing.T) {
 }
 
 // =========================================================================
+// Issue 65 — Latent unsigned-integer wraparound / out-of-bounds panic in
+// generateSingleBlockSdbf if threshold were ever 0
+// https://github.com/malwarology/sdhash/issues/65
+// =========================================================================
+//
+// threshold is always the package constant 16 in production, so none of
+// this is reachable today; the fix is defensive hardening against a future
+// refactor, configuration option, or bug elsewhere that zeroes the field.
+// The tests below are split the same way as the other arithmetic-overflow
+// issues in this file: a characterization test tied to the finding's own
+// exact reproduction (which cannot call the fixed production code, since
+// the buggy loop no longer exists there to call), plus real-function tests
+// proving the actual fix behaves correctly — not just that it avoids a
+// panic, but that the clamp produces the intended permissive threshold
+// rather than silently wrapping to a value that would suppress every
+// feature instead.
+
+// ---------------------------------------------------------------------------
+// 00520000  Zero-threshold loop wraparound characterization
+// ---------------------------------------------------------------------------
+
+// TestIssue65_ZeroThresholdLoopWraparoundCharacterization reproduces the
+// finding's own exact repro: mirroring the pre-fix loop in
+// generateSingleBlockSdbf (generate.go, "for k = 65; k >= sd.threshold;
+// k--") with k and threshold as uint32 and threshold forced to 0, indexing
+// a 66-element array by k must panic with exactly "index out of range
+// [4294967295] with length 66" — the precise wraparound the finding
+// describes.
+//
+// threshold is declared as a runtime variable, not a constant: a
+// compile-time constant expression here would overflow at build time and
+// fail to compile, masking the very runtime wraparound this test
+// demonstrates (see generate.go's own comment on the same issue).
+func TestIssue65_ZeroThresholdLoopWraparoundCharacterization(t *testing.T) {
+	t.Parallel()
+
+	var scoreHistogram [66]int32
+	threshold := uint32(0)
+	var k uint32
+
+	defer func() {
+		r := recover()
+		checkNotNil(t, r, "the pre-fix uint32 loop must panic when threshold is 0 (regression: issue #65)")
+		msg := fmt.Sprintf("%v", r)
+		checkTrue(t, strings.Contains(msg, "index out of range [4294967295] with length 66"),
+			fmt.Sprintf("panic message must match the finding's exact reproduction, got %q (regression: issue #65)", msg))
+	}()
+
+	for k = 65; k >= threshold; k-- {
+		_ = scoreHistogram[k]
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 00530000  Zero-threshold clamp produces permissive behavior
+// ---------------------------------------------------------------------------
+
+// TestIssue65_ZeroThresholdClampProducesPermissiveBehavior calls the real,
+// fixed generateSingleBlockSdbf with threshold forced to 0, and verifies
+// not just that it doesn't panic but that it behaves as a threshold of 0
+// should: maximally permissive, hashing essentially every scored window
+// position rather than none.
+//
+// This matters because "doesn't panic" alone isn't proof the clamp did its
+// job — see TestIssue65_UnclampedThresholdWouldSuppressAllFeatures for the
+// silent-failure alternative a missing clamp would produce without ever
+// panicking.
+//
+// Construction: a 128-byte block (2x popWinSize) keeps the total number of
+// scored windows (blockSize - popWinSize = 64) comfortably under maxElemDd
+// (192), so the sum-vs-maxElem break in the k loop never fires and the loop
+// runs all the way down to -1, guaranteeing the clamp branch executes,
+// matching TestGenerateSingleBlockSdbf_ZeroThresholdClamp in
+// sdhash_test.go.
+func TestIssue65_ZeroThresholdClampProducesPermissiveBehavior(t *testing.T) {
+	t.Parallel()
+
+	const ddBlockSize = 128
+	sd := newTestSdbf(t)
+	sd.ddBlockSize = ddBlockSize
+	sd.maxElem = maxElemDd
+	sd.threshold = 0
+	sd.buffer = make([]byte, uint64(sd.bfCount)*uint64(sd.bfSize))
+	sd.elemCounts = make([]uint16, sd.bfCount)
+
+	fileBuffer := randomBuf(ddBlockSize, 104, 104)
+
+	checkNotPanics(t,
+		func() { sd.generateSingleBlockSdbf(fileBuffer, 0) },
+		"generateSingleBlockSdbf must not panic when threshold is 0 (regression: issue #65)",
+	)
+	checkGreater(t, uint32(sd.elemCounts[0]), uint32(0),
+		"a clamped, permissive threshold of 0 must hash at least one feature, not silently hash none "+
+			"(regression: issue #65)")
+}
+
+// ---------------------------------------------------------------------------
+// 00540000  Unclamped threshold would suppress all features
+// ---------------------------------------------------------------------------
+
+// TestIssue65_UnclampedThresholdWouldSuppressAllFeatures demonstrates the
+// specific failure mode the clamp prevents, distinct from the k-loop's own
+// panic: if k were left at -1 and converted straight to uint32 instead of
+// being clamped to 0, generateBlockHash would receive a threshold of
+// ^uint32(0) (4294967295). Since chunkScores are uint16, no score can ever
+// exceed or equal that threshold, so every feature would be silently
+// rejected — a wrong result with no panic and no error, calling the real,
+// unmodified generateBlockHash directly with that value.
+func TestIssue65_UnclampedThresholdWouldSuppressAllFeatures(t *testing.T) {
+	t.Parallel()
+
+	sd := newTestSdbf(t)
+	sd.ddBlockSize = 128
+	sd.maxElem = maxElemDd
+	sd.buffer = make([]byte, uint64(sd.bfCount)*uint64(sd.bfSize))
+	sd.elemCounts = make([]uint16, sd.bfCount)
+
+	fileBuffer := randomBuf(128, 105, 105)
+	chunkScores := make([]uint16, 128)
+	for i := range chunkScores {
+		chunkScores[i] = uint16(1 + i%5) // small, nonzero, varied scores
+	}
+
+	const unclampedThreshold = ^uint32(0) // 4294967295, what uint32(-1) would produce
+	sd.generateBlockHash(fileBuffer, 0, chunkScores, 0, unclampedThreshold, int32(sd.maxElem))
+
+	checkEqual(t, uint16(0), sd.elemCounts[0],
+		"an unclamped, wrapped threshold must silently suppress every feature (regression: issue #65) — "+
+			"this is the failure mode the clamp prevents, distinct from the loop's own panic")
+}
+
+// =========================================================================
 // Issue 66 — DD-mode last-block terminator handling over-reads into
 // immediately-following data, corrupting concatenated digest streams
 // https://github.com/malwarology/sdhash/issues/66
@@ -1558,7 +1697,7 @@ func TestIssue64_DDModeBoundedReadDoesNotConsumeUnboundedInput(t *testing.T) {
 // unread via bufio.Reader.UnreadByte rather than consumed.
 
 // ---------------------------------------------------------------------------
-// 00520000  Concatenated DD digests parse correctly
+// 00550000  Concatenated DD digests parse correctly
 // ---------------------------------------------------------------------------
 
 // TestIssue66_ConcatenatedDDDigestsParseCorrectly is the minimal
@@ -1587,7 +1726,7 @@ func TestIssue66_ConcatenatedDDDigestsParseCorrectly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00530000  Last block terminator variants
+// 00560000  Last block terminator variants
 // ---------------------------------------------------------------------------
 
 // TestIssue66_LastBlockTerminatorVariants directly exercises every
@@ -1639,7 +1778,7 @@ func TestIssue66_LastBlockTerminatorVariants(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 00540000  Non-last block delimiter mismatch rejected
+// 00570000  Non-last block delimiter mismatch rejected
 // ---------------------------------------------------------------------------
 
 // TestIssue66_NonLastBlockDelimiterMismatchRejected verifies the other half
