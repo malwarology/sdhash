@@ -747,6 +747,9 @@ func TestParse_ErrorCases(t *testing.T) {
 		{"stream truncated after bfCount", "sdbf:03:1:-:1048576:sha1:256:5:7ff:160:1:"},
 		{"DD readField fails on second filter", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:c0:" + validB64 + ":"},
 		{"DD base64 decode fails on second filter", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:c0:" + validB64 + ":c0:!!bad!!"},
+		{"DD non-last block missing colon delimiter", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:c0:" + validB64 + "X"},
+		{"DD non-last block EOF at delimiter position", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:c0:" + validB64},
+		{"DD last block malformed CR without LF", "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:c0:" + validB64 + "\r"},
 	}
 
 	for _, tc := range cases {

@@ -1,6 +1,7 @@
 package sdhash
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"fmt"
@@ -121,6 +122,13 @@ import (
 // ├── 00490000  DD mode unterminated block does not hang
 // ├── 00500000  Stream mode bounded read does not consume unbounded input
 // └── 00510000  DD mode bounded read does not consume unbounded input
+//
+// Issue 66 — DD-mode last-block terminator handling over-reads into
+// immediately-following data, corrupting concatenated digest streams
+//    https://github.com/malwarology/sdhash/issues/66
+// ├── 00520000  Concatenated DD digests parse correctly
+// ├── 00530000  Last block terminator variants
+// └── 00540000  Non-last block delimiter mismatch rejected
 
 // =========================================================================
 // Issue 1 — Hash Mismatch Between Reference Implementation and Go Implementation
@@ -1521,4 +1529,146 @@ func TestIssue64_DDModeBoundedReadDoesNotConsumeUnboundedInput(t *testing.T) {
 	checkTrue(t, cr.count < generousBound,
 		fmt.Sprintf("ParseReader must not consume more than %d bytes from the reader; consumed %d "+
 			"(regression: issue #64)", generousBound, cr.count))
+}
+
+// =========================================================================
+// Issue 66 — DD-mode last-block terminator handling over-reads into
+// immediately-following data, corrupting concatenated digest streams
+// https://github.com/malwarology/sdhash/issues/66
+// =========================================================================
+//
+// Discovered while writing the Issue 64 regression tests above: the
+// bounded-read fix for Issue 64 (readBoundedString) searched for a ':'
+// delimiter to find each DD block's payload boundary, but the *last* block
+// has no trailing ':' — it ends at '\r\n', '\n', or EOF. Searching for a
+// delimiter that structurally doesn't exist always ran to the end of the
+// read's bound, silently consuming whatever came next: for a standalone
+// digest reaching real EOF this happened to still work (TrimRight stripped
+// the trailing newline it had over-read), but for a digest immediately
+// followed by more data — a second digest concatenated in the same stream,
+// exactly the pattern TestParseReader_MultipleDigests exercises for stream
+// mode — it consumed the first byte of that following data too, corrupting
+// both digests' parse.
+//
+// The fix replaces delimiter-scanning for DD block payloads with an
+// exact-length read (base64.StdEncoding.EncodedLen(bfSize) is fixed and
+// known in advance, so no scanning is needed), followed by explicit
+// terminator handling: a single ':' for every block but the last, and
+// '\r\n' / '\n' / EOF for the last — with anything else found there left
+// unread via bufio.Reader.UnreadByte rather than consumed.
+
+// ---------------------------------------------------------------------------
+// 00520000  Concatenated DD digests parse correctly
+// ---------------------------------------------------------------------------
+
+// TestIssue66_ConcatenatedDDDigestsParseCorrectly is the minimal
+// reproduction of the bug this issue fixes, built entirely from the real
+// production pipeline (New/WithBlockSize/Compute and String), not a
+// hand-built digest string: two small DD digests, concatenated exactly as
+// TestParseReader_MultipleDigests does for stream mode, must both parse
+// back to their original values from a single shared *bufio.Reader.
+func TestIssue66_ConcatenatedDDDigestsParseCorrectly(t *testing.T) {
+	t.Parallel()
+
+	buf1 := randomBuf(4096, 201, 201)
+	buf2 := randomBuf(4096, 202, 202)
+	sd1 := ddDigest(t, buf1, 1024)
+	sd2 := ddDigest(t, buf2, 1024)
+
+	r := bufio.NewReader(strings.NewReader(sd1.String() + sd2.String()))
+
+	parsed1, err := ParseReader(r)
+	mustNoError(t, err, "parsing the first of two concatenated DD digests must succeed (regression: issue #66)")
+	checkEqual(t, sd1.String(), parsed1.String(), "first parsed digest must match the original exactly")
+
+	parsed2, err := ParseReader(r)
+	mustNoError(t, err, "parsing the second of two concatenated DD digests must succeed (regression: issue #66)")
+	checkEqual(t, sd2.String(), parsed2.String(), "second parsed digest must match the original exactly")
+}
+
+// ---------------------------------------------------------------------------
+// 00530000  Last block terminator variants
+// ---------------------------------------------------------------------------
+
+// TestIssue66_LastBlockTerminatorVariants directly exercises every
+// terminator the last DD block can legitimately end with: a bare '\n', a
+// Windows-style "\r\n", and true EOF (no trailing bytes at all) must all
+// parse successfully. A fourth case — the last block immediately followed
+// by unrelated data with no separator at all, the most direct form of the
+// bug this issue fixes — must also parse successfully. It must also leave
+// that unrelated data completely untouched for whatever reads the stream
+// next.
+func TestIssue66_LastBlockTerminatorVariants(t *testing.T) {
+	t.Parallel()
+
+	validB64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
+	header := "sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:1:1048576:c0:" + validB64
+
+	cases := []struct {
+		name    string
+		trailer string
+	}{
+		{"bare LF terminator", "\n"},
+		{"CRLF terminator", "\r\n"},
+		{"EOF with no trailing bytes", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := Parse(header + tc.trailer)
+			checkNoError(t, err, fmt.Sprintf("expected a successful parse for case %q (regression: issue #66)", tc.name))
+		})
+	}
+
+	t.Run("immediately followed by unrelated data", func(t *testing.T) {
+		t.Parallel()
+		const trailing = "UNRELATEDDATA"
+		r := bufio.NewReader(strings.NewReader(header + trailing))
+
+		_, err := ParseReader(r)
+		checkNoError(t, err,
+			"expected a successful parse when the last block is followed by unrelated data with no separator (regression: issue #66)")
+
+		rest := make([]byte, len(trailing))
+		n, err := io.ReadFull(r, rest)
+		mustNoError(t, err, "reading the remainder of the stream must succeed")
+		checkEqual(t, len(trailing), n, "must read exactly the trailing bytes")
+		checkEqual(t, trailing, string(rest),
+			"trailing bytes must be left completely untouched, not partially consumed (regression: issue #66)")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// 00540000  Non-last block delimiter mismatch rejected
+// ---------------------------------------------------------------------------
+
+// TestIssue66_NonLastBlockDelimiterMismatchRejected verifies the other half
+// of the fix: every block but the last must still be strictly delimited by
+// a single ':'. A wrong character in that position, or EOF at that
+// position, must be rejected rather than silently accepted.
+func TestIssue66_NonLastBlockDelimiterMismatchRejected(t *testing.T) {
+	t.Parallel()
+
+	validB64 := base64.StdEncoding.EncodeToString(make([]byte, 256))
+
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{
+			"wrong delimiter character",
+			"sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:c0:" + validB64 + "X" + validB64 + "\n",
+		},
+		{
+			"EOF exactly at delimiter position",
+			"sdbf-dd:03:1:-:1048576:sha1:256:5:7ff:192:2:1048576:c0:" + validB64,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := Parse(tc.input)
+			checkError(t, err, fmt.Sprintf("expected an error for case %q (regression: issue #66)", tc.name))
+		})
+	}
 }
